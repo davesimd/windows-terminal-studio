@@ -932,6 +932,11 @@ button {
   height: 100%;
   min-width: 160px;
   overflow: hidden;
+  transition: flex 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pane-wrapper-flex.dragging {
+  transition: none !important;
 }
 
 .pane-inner {
@@ -976,6 +981,22 @@ button {
   width: 100%;
   min-height: 120px;
   overflow: hidden;
+  transition: flex 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pane-wrapper-stacked.dragging {
+  transition: none !important;
+}
+
+.btn-toolbar-action.active-reset {
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.btn-toolbar-action.active-reset:hover {
+  background: var(--accent-primary);
+  color: white;
 }
 
 .pane-resizer-row {

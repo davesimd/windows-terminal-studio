@@ -214,6 +214,18 @@ export default function WorkspacePage({
     });
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const isCustomSizes = paneSizes.length > 1 && paneSizes.some(
+    (s) => Math.abs(s - 100 / paneSizes.length) > 1.5
+  );
+
+  const handleResetPaneSizes = () => {
+    if (workspace.terminals.length > 0) {
+      setPaneSizes(Array(workspace.terminals.length).fill(100 / workspace.terminals.length));
+    }
+  };
+
   // Interactive Drag Resizing for columns (horizontal) and stacked (vertical)
   const handleStartResize = (index: number, direction: "col" | "row", e: React.MouseEvent) => {
     e.preventDefault();
@@ -226,6 +238,7 @@ export default function WorkspacePage({
     const currentSizes = [...paneSizes];
     if (currentSizes.length !== workspace.terminals.length) return;
 
+    setIsDragging(true);
     document.body.style.userSelect = "none";
     document.body.style.cursor = direction === "col" ? "col-resize" : "row-resize";
 
@@ -247,6 +260,7 @@ export default function WorkspacePage({
     };
 
     const onMouseUp = () => {
+      setIsDragging(false);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
       window.removeEventListener("mousemove", onMouseMove);
@@ -281,6 +295,8 @@ export default function WorkspacePage({
         onQuickSpawn={handleQuickSpawn}
         onOpenBroadcastModal={() => setIsBroadcastModalOpen(true)}
         onKillAll={handleKillAll}
+        onResetPaneSizes={handleResetPaneSizes}
+        isCustomSizes={isCustomSizes}
       />
 
       {/* Maximized / Focus Mode Top Session Switcher Bar */}
@@ -391,7 +407,7 @@ export default function WorkspacePage({
             {!workspace.maximizedId && workspace.gridLayout === "side-by-side" && (
               <div className="columns-resizable-container">
                 {workspace.terminals.map((term, index) => (
-                  <div key={term.id} className="pane-wrapper-flex" style={{ flex: paneSizes[index] ?? 1 }}>
+                  <div key={term.id} className={`pane-wrapper-flex ${isDragging ? "dragging" : ""}`} style={{ flex: paneSizes[index] ?? 1 }}>
                     <div className="pane-inner">
                       <TerminalSession
                         session={term}
@@ -421,7 +437,7 @@ export default function WorkspacePage({
             {!workspace.maximizedId && workspace.gridLayout === "stacked" && (
               <div className="stacked-resizable-container">
                 {workspace.terminals.map((term, index) => (
-                  <div key={term.id} className="pane-wrapper-stacked" style={{ flex: paneSizes[index] ?? 1 }}>
+                  <div key={term.id} className={`pane-wrapper-stacked ${isDragging ? "dragging" : ""}`} style={{ flex: paneSizes[index] ?? 1 }}>
                     <div className="pane-inner">
                       <TerminalSession
                         session={term}

@@ -9,7 +9,8 @@ import {
   Zap, 
   Sparkles, 
   Bot, 
-  Terminal
+  Terminal,
+  RotateCcw
 } from "lucide-react";
 import { TerminalData } from "./TerminalSession";
 
@@ -23,6 +24,8 @@ interface TerminalToolbarProps {
   onQuickSpawn: (appType: TerminalData["appType"]) => void;
   onOpenBroadcastModal: () => void;
   onKillAll: () => void;
+  onResetPaneSizes?: () => void;
+  isCustomSizes?: boolean;
 }
 
 export default function TerminalToolbar({
@@ -33,6 +36,8 @@ export default function TerminalToolbar({
   onQuickSpawn,
   onOpenBroadcastModal,
   onKillAll,
+  onResetPaneSizes,
+  isCustomSizes,
 }: TerminalToolbarProps) {
   return (
     <div className="terminal-toolbar">
@@ -43,7 +48,7 @@ export default function TerminalToolbar({
           <span>Launch / Add Terminal</span>
         </button>
 
-        {/* Quick launch presets */}
+        {/* Quick Launch Shortcuts */}
         <div className="quick-presets">
           <button 
             className="btn-quick-preset" 
@@ -124,6 +129,18 @@ export default function TerminalToolbar({
         {/* Global Operations */}
         {terminals.length > 0 && (
           <div className="toolbar-actions">
+            {/* Equalize / Reset Panes button */}
+            {onResetPaneSizes && terminals.length > 1 && (gridLayout === "side-by-side" || gridLayout === "stacked") && (
+              <button 
+                className={`btn-toolbar-action ${isCustomSizes ? "active-reset" : ""}`}
+                title="Reset all terminal panes to equal width/height"
+                onClick={onResetPaneSizes}
+              >
+                <RotateCcw size={13} />
+                <span>Reset Sizes</span>
+              </button>
+            )}
+
             <button 
               className="btn-toolbar-action" 
               title="Broadcast input to all terminals"
