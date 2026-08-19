@@ -899,15 +899,105 @@ button {
 }
 
 /* ==========================================================================
-   TERMINAL GRIDS
+   TERMINAL RESIZABLE LAYOUTS & GRIDS
    ========================================================================== */
 
-.terminals-grid {
-  display: grid;
-  gap: 8px;
+.terminals-viewport-container {
   height: 100%;
   width: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Single Terminal View (Maximized / Focus) */
+.single-terminal-view {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Columns Resizable (Side-by-Side Horizontal Resizing) */
+.columns-resizable-container {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.pane-wrapper-flex {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.pane-inner {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pane-resizer-col {
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s, box-shadow 0.15s;
+  margin: 0 -1px;
+}
+
+.pane-resizer-col:hover,
+.pane-resizer-col:active {
+  background: #6366f1;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.7);
+}
+
+/* Stacked Resizable (Stacked Vertical Resizing) */
+.stacked-resizable-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.pane-wrapper-stacked {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 120px;
+  overflow: hidden;
+}
+
+.pane-resizer-row {
+  height: 6px;
+  width: 100%;
+  cursor: row-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s, box-shadow 0.15s;
+  margin: -1px 0;
+}
+
+.pane-resizer-row:hover,
+.pane-resizer-row:active {
+  background: #6366f1;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.7);
+}
+
+.matrix-grid-container {
+  overflow: auto;
 }
 
 .grid-1x1 {

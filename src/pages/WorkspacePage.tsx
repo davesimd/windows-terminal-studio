@@ -1,13 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { 
   Terminal as TermIcon, 
   Plus, 
   Sparkles, 
   Zap, 
   Bot, 
-  Minimize2, 
-  X,
-  Cpu
+  Minimize2 
 } from "lucide-react";
 import TerminalSession, { TerminalData } from "../components/terminal/TerminalSession";
 import TerminalToolbar, { GridLayoutMode } from "../components/terminal/TerminalToolbar";
@@ -20,9 +18,9 @@ import { DirectoryTemplate } from "../types/settings";
 interface WorkspacePageProps {
   workspace: WorkspaceData;
   onUpdateWorkspace: (updated: Partial<WorkspaceData>) => void;
-  onRenameWorkspace: (newName: string) => void;
+  onRenameWorkspace?: (newName: string) => void;
   onLogSessionStart?: (session: HistoricalSession) => void;
-  onLogSessionEnd?: (id: string) => void;
+  onLogSessionEnd?: (sessionId: string) => void;
   directoryTemplates?: DirectoryTemplate[];
   defaultCwd?: string;
   onSaveDirectoryTemplate?: (name: string, path: string) => void;
@@ -39,64 +37,47 @@ export default function WorkspacePage({
 }: WorkspacePageProps) {
   const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [paneSizes, setPaneSizes] = useState<number[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const termCounter = useRef(1);
+  // Synchronize proportional sizes when terminal count or layout changes
+  useEffect(() => {
+    const count = workspace.terminals.length;
+    if (count > 0) {
+      setPaneSizes(Array(count).fill(100 / count));
+    } else {
+      setPaneSizes([]);
+    }
+  }, [workspace.terminals.length, workspace.gridLayout]);
 
-  // Spawn a terminal via Tauri Rust PTY bridge
-  const spawnTerminal = async (config: Omit<TerminalData, "id" | "status">) => {
-    const id = `term_${workspace.id}_${Date.now()}_${termCounter.current++}`;
-    const startedAt = Date.now();
-    const effectiveCwd = config.cwd || workspace.defaultCwd || defaultCwd || undefined;
-
-    const newTerm: TerminalData = {
+  // Spawn new terminal
+  const spawnTerminal = (config: Omit<TerminalData, "id" | "status">) => {
+    const id = `term_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newSession: TerminalData = {
+      ...config,
       id,
-      title: config.title || `Terminal #${termCounter.current - 1}`,
-      appType: config.appType,
-      shellOrCommand: config.shellOrCommand,
-      args: config.args,
-      cwd: effectiveCwd,
       status: "running",
-      startedAt,
+      startedAt: Date.now(),
       outputChunksCount: 0,
-      lastActiveAt: startedAt,
     };
 
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const info = await invoke<{ pid?: number }>("spawn_terminal", {
-        id: newTerm.id,
-        title: newTerm.title,
-        shell: newTerm.shellOrCommand,
-        args: newTerm.args || null,
-        cwd: newTerm.cwd || null,
-        cols: 80,
-        rows: 24,
-      });
-      newTerm.pid = info.pid;
-    } catch {
-      // Running in web preview mode
-      newTerm.pid = Math.floor(10000 + Math.random() * 90000);
-    }
-
     onLogSessionStart?.({
-      id: newTerm.id,
+      id: newSession.id,
       workspaceId: workspace.id,
       workspaceName: workspace.name,
-      title: newTerm.title,
-      appType: newTerm.appType,
-      shellOrCommand: newTerm.shellOrCommand,
-      cwd: newTerm.cwd,
-      pid: newTerm.pid,
-      startedAt,
+      title: newSession.title,
+      appType: newSession.appType,
+      shellOrCommand: newSession.shellOrCommand,
+      cwd: newSession.cwd,
+      pid: undefined,
+      startedAt: newSession.startedAt!,
       status: "running",
       outputChunksCount: 0,
     });
 
-    const nextTerminals = [...workspace.terminals, newTerm];
     onUpdateWorkspace({
-      terminals: nextTerminals,
-      focusedId: newTerm.id,
-      maximizedId: workspace.maximizedId ? newTerm.id : workspace.maximizedId,
+      terminals: [...workspace.terminals, newSession],
+      focusedId: newSession.id,
     });
   };
 
@@ -105,12 +86,12 @@ export default function WorkspacePage({
     const targetCwd = workspace.defaultCwd || defaultCwd || undefined;
 
     switch (appType) {
-      case "kilo":
+      case "claude":
         spawnTerminal({
-          title: "Kilo CLI",
-          appType: "kilo",
+          title: "Claude Code",
+          appType: "claude",
           shellOrCommand: "powershell.exe",
-          args: ["-NoExit", "-Command", "kilo"],
+          args: ["-NoExit", "-Command", "claude"],
           cwd: targetCwd,
         });
         break;
@@ -123,12 +104,12 @@ export default function WorkspacePage({
           cwd: targetCwd,
         });
         break;
-      case "claude":
+      case "kilo":
         spawnTerminal({
-          title: "Claude Code",
-          appType: "claude",
+          title: "Kilo CLI",
+          appType: "kilo",
           shellOrCommand: "powershell.exe",
-          args: ["-NoExit", "-Command", "claude"],
+          args: ["-NoExit", "-Command", "kilo"],
           cwd: targetCwd,
         });
         break;
@@ -233,67 +214,47 @@ export default function WorkspacePage({
     });
   };
 
-  // Compute dynamic grid style based on layout mode and active terminals
-  const getGridStyle = (): React.CSSProperties => {
-    if (workspace.maximizedId || workspace.gridLayout === "focus") {
-      return {
-        display: "grid",
-        gridTemplateColumns: "1fr",
-        gridTemplateRows: "1fr",
-        height: "100%",
-        width: "100%",
-      };
-    }
+  // Interactive Drag Resizing for columns (horizontal) and stacked (vertical)
+  const handleStartResize = (index: number, direction: "col" | "row", e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!containerRef.current) return;
 
-    const count = workspace.terminals.length;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const startPos = direction === "col" ? e.clientX : e.clientY;
+    const totalPixels = direction === "col" ? containerRect.width : containerRect.height;
+    const currentSizes = [...paneSizes];
+    if (currentSizes.length !== workspace.terminals.length) return;
 
-    if (workspace.gridLayout === "side-by-side") {
-      // Put ALL terminals side-by-side in vertical columns (no stacking)
-      return {
-        display: "grid",
-        gridTemplateColumns: `repeat(${count}, minmax(280px, 1fr))`,
-        gridTemplateRows: "100%",
-        height: "100%",
-        width: "100%",
-        overflowX: "auto",
-        overflowY: "hidden",
-      };
-    }
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = direction === "col" ? "col-resize" : "row-resize";
 
-    if (workspace.gridLayout === "stacked") {
-      // Stack ALL terminals vertically in horizontal rows (no disappearing)
-      return {
-        display: "grid",
-        gridTemplateColumns: "100%",
-        gridTemplateRows: `repeat(${count}, minmax(200px, 1fr))`,
-        height: "100%",
-        width: "100%",
-        overflowY: "auto",
-        overflowX: "hidden",
-      };
-    }
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const currentPos = direction === "col" ? moveEvent.clientX : moveEvent.clientY;
+      const deltaPixels = currentPos - startPos;
+      const deltaPercent = (deltaPixels / totalPixels) * 100;
 
-    if (workspace.gridLayout === "grid") {
-      // 2-column matrix
-      const cols = count > 1 ? 2 : 1;
-      const rows = Math.ceil(count / 2);
-      return {
-        display: "grid",
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gridTemplateRows: `repeat(${rows}, minmax(240px, 1fr))`,
-        height: "100%",
-        width: "100%",
-        overflowY: "auto",
-      };
-    }
+      const minPercent = 10; // Minimum 10% size per pane
+      const sizeA = currentSizes[index] + deltaPercent;
+      const sizeB = currentSizes[index + 1] - deltaPercent;
 
-    return {
-      display: "grid",
-      gridTemplateColumns: `repeat(${count}, minmax(280px, 1fr))`,
-      gridTemplateRows: "100%",
-      height: "100%",
-      width: "100%",
+      if (sizeA >= minPercent && sizeB >= minPercent) {
+        const next = [...currentSizes];
+        next[index] = sizeA;
+        next[index + 1] = sizeB;
+        setPaneSizes(next);
+      }
     };
+
+    const onMouseUp = () => {
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
   };
 
   const getAppIcon = (appType: TerminalData["appType"]) => {
@@ -308,7 +269,6 @@ export default function WorkspacePage({
         return <TermIcon size={13} className="text-indigo-400" />;
     }
   };
-
 
   return (
     <div className="workspace-hub animate-fade">
@@ -338,65 +298,41 @@ export default function WorkspacePage({
               return (
                 <div
                   key={t.id}
-                  className={`maximized-tab ${isCurrent ? "active" : ""}`}
+                  className={`maximized-session-tab ${isCurrent ? "active" : ""}`}
                   onClick={() => {
-                    if (workspace.maximizedId) onUpdateWorkspace({ maximizedId: t.id });
-                    else onUpdateWorkspace({ focusedId: t.id });
+                    if (workspace.maximizedId) {
+                      onUpdateWorkspace({ maximizedId: t.id, focusedId: t.id });
+                    } else {
+                      onUpdateWorkspace({ focusedId: t.id });
+                    }
                   }}
                 >
-                  <div className="tab-icon-title">
-                    {getAppIcon(t.appType)}
-                    <span className="tab-title">{t.title}</span>
-                  </div>
-
-                  {t.pid && (
-                    <span className="tab-pid">
-                      <Cpu size={10} />
-                      {t.pid}
-                    </span>
+                  <span className="session-tab-icon">{getAppIcon(t.appType)}</span>
+                  <span className="session-tab-title">{t.title}</span>
+                  {t.lastActiveAt && Date.now() - t.lastActiveAt < 3500 && (
+                    <span className="session-tab-live-dot" />
                   )}
-
-                  <span className="status-dot running" title="Running" />
-
-                  <button
-                    className="tab-close-btn"
-                    title="Close session"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCloseTerminal(t.id);
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
                 </div>
               );
             })}
-
-            <button 
-              className="maximized-add-btn" 
-              title="Launch new terminal"
-              onClick={() => setIsLaunchModalOpen(true)}
-            >
-              <Plus size={13} />
-              <span>New</span>
-            </button>
           </div>
 
-          {/* Restore Grid button */}
-          {workspace.maximizedId && (
-            <button
-              className="btn-restore-grid"
-              onClick={() => onUpdateWorkspace({ maximizedId: null })}
-              title="Restore multi-pane grid view"
-            >
-              <Minimize2 size={14} />
-              <span>Restore Grid</span>
-            </button>
-          )}
+          <div className="maximized-bar-actions">
+            {workspace.maximizedId && (
+              <button
+                className="btn-restore-grid"
+                onClick={() => onUpdateWorkspace({ maximizedId: null })}
+                title="Restore grid view"
+              >
+                <Minimize2 size={13} />
+                <span>Restore Layout</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Grid Canvas */}
+      {/* Main Workspace Canvas */}
       <div className="workspace-canvas">
         {workspace.terminals.length === 0 ? (
           <div className="empty-workspace-state animate-fade">
@@ -404,7 +340,7 @@ export default function WorkspacePage({
               <TermIcon size={36} className="text-indigo-400" />
             </div>
             <h3>No Active Terminals in {workspace.name}</h3>
-            <p>Launch PowerShell, Kilo CLI, Antigravity CLI, Claude Code, or custom commands in this workspace.</p>
+            <p>Launch PowerShell, Claude Code, Antigravity CLI, Kilo CLI, or custom commands in this workspace.</p>
 
             <div className="empty-quick-buttons">
               <button className="btn-primary" onClick={() => setIsLaunchModalOpen(true)}>
@@ -426,27 +362,119 @@ export default function WorkspacePage({
             </div>
           </div>
         ) : (
-          <div className="terminals-grid-container" style={getGridStyle()}>
-            {workspace.terminals.map((term) => {
-              // If maximized, only render maximized terminal
-              if (workspace.maximizedId && workspace.maximizedId !== term.id) return null;
-              // If in focus mode and not maximized, only render focused terminal
-              if (workspace.gridLayout === "focus" && !workspace.maximizedId && workspace.focusedId && workspace.focusedId !== term.id) return null;
+          <div ref={containerRef} className="terminals-viewport-container">
+            {/* Maximized or Focus Mode */}
+            {(workspace.maximizedId || workspace.gridLayout === "focus") && (
+              <div className="single-terminal-view">
+                {(() => {
+                  const targetId = workspace.maximizedId || workspace.focusedId || workspace.terminals[0]?.id;
+                  const term = workspace.terminals.find((t) => t.id === targetId) || workspace.terminals[0];
+                  if (!term) return null;
+                  return (
+                    <TerminalSession
+                      key={term.id}
+                      session={term}
+                      isMaximized={Boolean(workspace.maximizedId)}
+                      onMaximizeToggle={(id) => onUpdateWorkspace({
+                        maximizedId: workspace.maximizedId === id ? null : id
+                      })}
+                      onClose={handleCloseTerminal}
+                      onRestart={handleRestartTerminal}
+                      onSessionActivity={handleSessionActivity}
+                    />
+                  );
+                })()}
+              </div>
+            )}
 
-              return (
-                <TerminalSession
-                  key={term.id}
-                  session={term}
-                  isMaximized={workspace.maximizedId === term.id}
-                  onMaximizeToggle={(id) => onUpdateWorkspace({
-                    maximizedId: workspace.maximizedId === id ? null : id
-                  })}
-                  onClose={handleCloseTerminal}
-                  onRestart={handleRestartTerminal}
-                  onSessionActivity={handleSessionActivity}
-                />
-              );
-            })}
+            {/* Side-by-Side (Columns View - Horizontal Resizing) */}
+            {!workspace.maximizedId && workspace.gridLayout === "side-by-side" && (
+              <div className="columns-resizable-container">
+                {workspace.terminals.map((term, index) => (
+                  <div key={term.id} className="pane-wrapper-flex" style={{ flex: paneSizes[index] ?? 1 }}>
+                    <div className="pane-inner">
+                      <TerminalSession
+                        session={term}
+                        isMaximized={false}
+                        onMaximizeToggle={(id) => onUpdateWorkspace({
+                          maximizedId: id
+                        })}
+                        onClose={handleCloseTerminal}
+                        onRestart={handleRestartTerminal}
+                        onSessionActivity={handleSessionActivity}
+                      />
+                    </div>
+                    {index < workspace.terminals.length - 1 && (
+                      <div
+                        className="pane-resizer-col"
+                        onMouseDown={(e) => handleStartResize(index, "col", e)}
+                        onDoubleClick={() => setPaneSizes(Array(workspace.terminals.length).fill(100 / workspace.terminals.length))}
+                        title="Drag to resize columns (double-click to reset)"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Stacked (Rows View - Vertical Resizing) */}
+            {!workspace.maximizedId && workspace.gridLayout === "stacked" && (
+              <div className="stacked-resizable-container">
+                {workspace.terminals.map((term, index) => (
+                  <div key={term.id} className="pane-wrapper-stacked" style={{ flex: paneSizes[index] ?? 1 }}>
+                    <div className="pane-inner">
+                      <TerminalSession
+                        session={term}
+                        isMaximized={false}
+                        onMaximizeToggle={(id) => onUpdateWorkspace({
+                          maximizedId: id
+                        })}
+                        onClose={handleCloseTerminal}
+                        onRestart={handleRestartTerminal}
+                        onSessionActivity={handleSessionActivity}
+                      />
+                    </div>
+                    {index < workspace.terminals.length - 1 && (
+                      <div
+                        className="pane-resizer-row"
+                        onMouseDown={(e) => handleStartResize(index, "row", e)}
+                        onDoubleClick={() => setPaneSizes(Array(workspace.terminals.length).fill(100 / workspace.terminals.length))}
+                        title="Drag to resize rows (double-click to reset)"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Matrix 2x2 Grid View */}
+            {!workspace.maximizedId && workspace.gridLayout === "grid" && (
+              <div 
+                className="matrix-grid-container"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: workspace.terminals.length > 1 ? "1fr 1fr" : "1fr",
+                  gridTemplateRows: `repeat(${Math.ceil(workspace.terminals.length / 2)}, minmax(220px, 1fr))`,
+                  gap: "8px",
+                  height: "100%",
+                  width: "100%",
+                }}
+              >
+                {workspace.terminals.map((term) => (
+                  <TerminalSession
+                    key={term.id}
+                    session={term}
+                    isMaximized={false}
+                    onMaximizeToggle={(id) => onUpdateWorkspace({
+                      maximizedId: id
+                    })}
+                    onClose={handleCloseTerminal}
+                    onRestart={handleRestartTerminal}
+                    onSessionActivity={handleSessionActivity}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
