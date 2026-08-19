@@ -3050,6 +3050,16 @@ input:checked + .toggle-slider:before {
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* XTerm dark theme enforce to prevent any background flash */
+.xterm-instance-container,
+.xterm,
+.xterm-viewport,
+.xterm-screen,
+.xterm-screen canvas {
+  background-color: #0d1017 !important;
+}
+
+
 
 
 
