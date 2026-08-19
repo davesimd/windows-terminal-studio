@@ -368,121 +368,62 @@ export default function WorkspacePage({
           </div>
         ) : (
           <div ref={containerRef} className="terminals-viewport-container">
-            {/* Maximized or Focus Mode (All panes mounted, only active pane visible) */}
-            {(workspace.maximizedId || workspace.gridLayout === "focus") && (
-              <div className="single-terminal-view">
-                {workspace.terminals.map((term) => {
-                  const targetId = workspace.maximizedId || workspace.focusedId || workspace.terminals[0]?.id;
-                  const isVisible = term.id === targetId;
-                  return (
-                    <div
-                      key={term.id}
-                      className={`focus-pane-layer ${isVisible ? "active" : ""}`}
-                    >
-                      <TerminalSession
-                        session={term}
-                        isMaximized={Boolean(workspace.maximizedId)}
-                        onMaximizeToggle={(id) => onUpdateWorkspace({
-                          maximizedId: workspace.maximizedId === id ? null : id
-                        })}
-                        onClose={handleCloseTerminal}
-                        onRestart={handleRestartTerminal}
-                        onSessionActivity={handleSessionActivity}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {(() => {
+              const currentLayout = workspace.maximizedId ? "maximized" : workspace.gridLayout;
+              const activeFocusId = workspace.maximizedId || workspace.focusedId || workspace.terminals[0]?.id;
 
-            {/* Side-by-Side (Columns View - Horizontal Resizing) */}
-            {!workspace.maximizedId && workspace.gridLayout === "side-by-side" && (
-              <div className="columns-resizable-container">
-                {workspace.terminals.map((term, index) => (
-                  <div key={term.id} className={`pane-wrapper-flex ${isDragging ? "dragging" : ""}`} style={{ flex: paneSizes[index] ?? 1 }}>
-                    <div className="pane-inner">
-                      <TerminalSession
-                        session={term}
-                        isMaximized={false}
-                        onMaximizeToggle={(id) => onUpdateWorkspace({
-                          maximizedId: id
-                        })}
-                        onClose={handleCloseTerminal}
-                        onRestart={handleRestartTerminal}
-                        onSessionActivity={handleSessionActivity}
-                      />
-                    </div>
-                    {index < workspace.terminals.length - 1 && (
+              return (
+                <div className={`terminals-viewport-layout layout-${currentLayout} ${isDragging ? "dragging" : ""}`}>
+                  {workspace.terminals.map((term, index) => {
+                    const isFocusHidden = (currentLayout === "focus" || currentLayout === "maximized") && term.id !== activeFocusId;
+                    const paneFlex = (currentLayout === "side-by-side" || currentLayout === "stacked")
+                      ? (paneSizes[index] ?? 1)
+                      : undefined;
+
+                    return (
                       <div
-                        className="pane-resizer-col"
-                        onMouseDown={(e) => handleStartResize(index, "col", e)}
-                        onDoubleClick={() => setPaneSizes(Array(workspace.terminals.length).fill(100 / workspace.terminals.length))}
-                        title="Drag to resize columns (double-click to reset)"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                        key={term.id}
+                        className={`terminal-pane-wrapper ${isFocusHidden ? "focus-hidden" : ""}`}
+                        style={paneFlex !== undefined ? { flex: paneFlex } : undefined}
+                      >
+                        <div className="pane-inner">
+                          <TerminalSession
+                            session={term}
+                            isMaximized={Boolean(workspace.maximizedId)}
+                            onMaximizeToggle={(id) => onUpdateWorkspace({
+                              maximizedId: workspace.maximizedId === id ? null : id
+                            })}
+                            onClose={handleCloseTerminal}
+                            onRestart={handleRestartTerminal}
+                            onSessionActivity={handleSessionActivity}
+                          />
+                        </div>
 
-            {/* Stacked (Rows View - Vertical Resizing) */}
-            {!workspace.maximizedId && workspace.gridLayout === "stacked" && (
-              <div className="stacked-resizable-container">
-                {workspace.terminals.map((term, index) => (
-                  <div key={term.id} className={`pane-wrapper-stacked ${isDragging ? "dragging" : ""}`} style={{ flex: paneSizes[index] ?? 1 }}>
-                    <div className="pane-inner">
-                      <TerminalSession
-                        session={term}
-                        isMaximized={false}
-                        onMaximizeToggle={(id) => onUpdateWorkspace({
-                          maximizedId: id
-                        })}
-                        onClose={handleCloseTerminal}
-                        onRestart={handleRestartTerminal}
-                        onSessionActivity={handleSessionActivity}
-                      />
-                    </div>
-                    {index < workspace.terminals.length - 1 && (
-                      <div
-                        className="pane-resizer-row"
-                        onMouseDown={(e) => handleStartResize(index, "row", e)}
-                        onDoubleClick={() => setPaneSizes(Array(workspace.terminals.length).fill(100 / workspace.terminals.length))}
-                        title="Drag to resize rows (double-click to reset)"
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                        {/* Side-by-side column resizer */}
+                        {currentLayout === "side-by-side" && index < workspace.terminals.length - 1 && (
+                          <div
+                            className="pane-resizer-col"
+                            onMouseDown={(e) => handleStartResize(index, "col", e)}
+                            onDoubleClick={handleResetPaneSizes}
+                            title="Drag to resize columns (double-click to reset sizes)"
+                          />
+                        )}
 
-            {/* Matrix 2x2 Grid View */}
-            {!workspace.maximizedId && workspace.gridLayout === "grid" && (
-              <div 
-                className="matrix-grid-container"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: workspace.terminals.length > 1 ? "1fr 1fr" : "1fr",
-                  gridTemplateRows: `repeat(${Math.ceil(workspace.terminals.length / 2)}, minmax(220px, 1fr))`,
-                  gap: "8px",
-                  height: "100%",
-                  width: "100%",
-                }}
-              >
-                {workspace.terminals.map((term) => (
-                  <TerminalSession
-                    key={term.id}
-                    session={term}
-                    isMaximized={false}
-                    onMaximizeToggle={(id) => onUpdateWorkspace({
-                      maximizedId: id
-                    })}
-                    onClose={handleCloseTerminal}
-                    onRestart={handleRestartTerminal}
-                    onSessionActivity={handleSessionActivity}
-                  />
-                ))}
-              </div>
-            )}
+                        {/* Stacked row resizer */}
+                        {currentLayout === "stacked" && index < workspace.terminals.length - 1 && (
+                          <div
+                            className="pane-resizer-row"
+                            onMouseDown={(e) => handleStartResize(index, "row", e)}
+                            onDoubleClick={handleResetPaneSizes}
+                            title="Drag to resize rows (double-click to reset sizes)"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
