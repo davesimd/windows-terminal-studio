@@ -17,6 +17,8 @@ src-tauri/target
 target
 *.pdb
 
-# Allow release binaries in releases/
+# Allow release packages in releases/
 !releases/*.exe
 !releases/*.msi
+!releases/*.zip
+!releases/*.dll

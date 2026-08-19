@@ -12,19 +12,20 @@ A modern, high-performance multi-workspace terminal and developer studio for Win
 
 ## 📥 Direct Downloads (Latest Windows Release)
 
-You can download and run the latest compiled Windows application directly without needing a development environment:
+Choose your preferred way to install or run Windows Terminal Studio:
 
-| Package | Format | Direct Download Link |
-| :--- | :--- | :--- |
-| **🚀 Windows Setup Installer** | `.exe` (NSIS) | [**Download Setup Installer (.exe)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application_0.1.0_x64-setup.exe) |
-| **📦 Standalone Portable Executable** | `.exe` | [**Download Standalone App (.exe)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application.exe) |
-| **💿 Windows MSI Installer** | `.msi` | [**Download MSI Package (.msi)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application_0.1.0_x64_en-US.msi) |
+| Package | Format | Direct Download Link | Description |
+| :--- | :--- | :--- | :--- |
+| **🚀 Windows Setup Installer** | `.exe` (NSIS) | [**Download Setup Installer (.exe)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application_0.1.0_x64-setup.exe) | Recommended. Standard Windows wizard installer with Start Menu shortcut. |
+| **📦 Portable Zero-Install ZIP** | `.zip` (6.2 MB) | [**Download Portable ZIP (.zip)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application_portable.zip) | Extract anywhere and run `windows_application.exe` instantly with zero install. |
+| **💿 Windows MSI Installer** | `.msi` (6.6 MB) | [**Download MSI Package (.msi)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application_0.1.0_x64_en-US.msi) | Enterprise Windows installer package. |
+| **⚡ Standalone Executable** | `.exe` | [**Download Standalone App (.exe)**](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/windows_application.exe) | Portable binary (also download [WebView2Loader.dll](https://github.com/davesimd/windows-terminal-studio/raw/main/releases/WebView2Loader.dll) into the same folder). |
 
 ---
 
 ## 🌟 Key Features
 
-* **Multi-Workspace Hub:** Organize CLI workflows across isolated, renameable workspaces. Background processes stay active and streaming seamlessly when switching between workspaces or pages.
+* **Multi-Workspace Hub & Persistence:** Organize CLI workflows across isolated, renameable workspaces. Background processes stay active and streaming seamlessly when switching between workspaces or pages.
 * **Native Windows ConPTY Engine:** Powered by Rust's `portable-pty` and asynchronous multi-threaded channels for native terminal speed, UTF-8 streaming, and full ANSI color rendering.
 * **AI Developer Agent Presets:** 1-click quick-launch presets for **Claude Code**, **Google Antigravity CLI (`agy`)**, **Kilo CLI**, **PowerShell**, **CMD**, and **WSL**.
 * **Interactive Drag Split Resizers:** Single-axis drag handles for **Side-by-Side (Columns)** and **Stacked (Rows)** layouts with a **Reset Sizes** equalize button.
