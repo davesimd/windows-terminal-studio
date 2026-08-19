@@ -126,7 +126,7 @@ export default function TerminalSession({
 
       {/* Terminal Canvas */}
       <div className="terminal-body">
-        <XTermInstance sessionId={session.id} onActivity={triggerActivity} />
+        <XTermInstance session={session} onActivity={triggerActivity} />
       </div>
     </div>
   );

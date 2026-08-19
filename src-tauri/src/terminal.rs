@@ -39,21 +39,35 @@ pub async fn spawn_terminal(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> Result<TerminalInfo, String> {
+    // If a session with this ID already exists, kill it cleanly first
+    {
+        let mut sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
+        if let Some(mut old_session) = sessions.remove(&id) {
+            let _ = old_session.child.kill();
+        }
+    }
+
     let pty_system = native_pty_system();
 
     let size = PtySize {
-        rows: rows.unwrap_or(24),
-        cols: cols.unwrap_or(80),
+        rows: rows.unwrap_or(24).max(5),
+        cols: cols.unwrap_or(80).max(10),
         pixel_width: 0,
         pixel_height: 0,
     };
 
     let pair = pty_system
         .openpty(size)
-        .map_err(|e| format!("Failed to open PTY: {}", e))?;
+        .map_err(|e| format!("Failed to open PTY subsystem: {}", e))?;
 
-    // Determine actual executable and args
-    let mut cmd = CommandBuilder::new(&shell);
+    // Determine actual executable and arguments
+    let effective_shell = if shell.trim().is_empty() {
+        "powershell.exe".to_string()
+    } else {
+        shell.clone()
+    };
+
+    let mut cmd = CommandBuilder::new(&effective_shell);
     if let Some(ref arg_list) = args {
         for arg in arg_list {
             cmd.arg(arg);
@@ -61,15 +75,19 @@ pub async fn spawn_terminal(
     }
 
     if let Some(ref dir) = cwd {
-        if !dir.trim().is_empty() {
-            cmd.cwd(dir);
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            let path = std::path::Path::new(trimmed);
+            if path.exists() && path.is_dir() {
+                cmd.cwd(trimmed);
+            }
         }
     }
 
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("Failed to spawn shell '{}': {}", shell, e))?;
+        .map_err(|e| format!("Failed to spawn shell '{}': {}", effective_shell, e))?;
 
     let pid = child.process_id();
     let reader = pair
@@ -85,7 +103,7 @@ pub async fn spawn_terminal(
     let terminal_info = TerminalInfo {
         id: id.clone(),
         title,
-        shell,
+        shell: effective_shell,
         cwd,
         pid,
         status: "Running".to_string(),
@@ -95,7 +113,7 @@ pub async fn spawn_terminal(
     let app_clone = app.clone();
     let term_id = id.clone();
     std::thread::spawn(move || {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 8192];
         let mut reader = reader;
         loop {
             match reader.read(&mut buf) {
@@ -122,7 +140,7 @@ pub async fn spawn_terminal(
         child,
     };
 
-    let mut sessions = state.sessions.lock().unwrap();
+    let mut sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
     sessions.insert(id, session);
 
     Ok(terminal_info)
@@ -134,18 +152,18 @@ pub async fn write_terminal(
     id: String,
     data: String,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
     if let Some(session) = sessions.get(&id) {
-        let mut writer = session.writer.lock().unwrap();
-        writer
-            .write_all(data.as_bytes())
-            .map_err(|e| format!("Write failed: {}", e))?;
-        writer
-            .flush()
-            .map_err(|e| format!("Flush failed: {}", e))?;
-        Ok(())
+        if let Ok(mut writer) = session.writer.lock() {
+            let _ = writer.write_all(data.as_bytes());
+            let _ = writer.flush();
+            Ok(())
+        } else {
+            Err("Writer mutex poisoned".to_string())
+        }
     } else {
-        Err(format!("Terminal session '{}' not found", id))
+        // Return Ok if session already exited gracefully rather than panicking/throwing
+        Ok(())
     }
 }
 
@@ -156,20 +174,17 @@ pub async fn resize_terminal(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
     if let Some(session) = sessions.get(&id) {
-        session
-            .master
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("Resize failed: {}", e))?;
+        let _ = session.master.resize(PtySize {
+            rows: rows.max(5),
+            cols: cols.max(10),
+            pixel_width: 0,
+            pixel_height: 0,
+        });
         Ok(())
     } else {
-        Err(format!("Terminal session '{}' not found", id))
+        Ok(())
     }
 }
 
@@ -178,12 +193,12 @@ pub async fn kill_terminal(
     state: State<'_, TerminalManager>,
     id: String,
 ) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().unwrap();
+    let mut sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
     if let Some(mut session) = sessions.remove(&id) {
         let _ = session.child.kill();
         Ok(())
     } else {
-        Err(format!("Terminal session '{}' not found", id))
+        Ok(())
     }
 }
 
@@ -191,7 +206,7 @@ pub async fn kill_terminal(
 pub async fn list_terminals(
     state: State<'_, TerminalManager>,
 ) -> Result<Vec<TerminalInfo>, String> {
-    let sessions = state.sessions.lock().unwrap();
+    let sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
     let list = sessions.values().map(|s| s.info.clone()).collect();
     Ok(list)
 }

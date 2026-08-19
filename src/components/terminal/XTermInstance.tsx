@@ -2,14 +2,15 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { TerminalData } from "./TerminalSession";
 import "@xterm/xterm/css/xterm.css";
 
 interface XTermInstanceProps {
-  sessionId: string;
+  session: TerminalData;
   onActivity?: () => void;
 }
 
-export default function XTermInstance({ sessionId, onActivity }: XTermInstanceProps) {
+export default function XTermInstance({ session, onActivity }: XTermInstanceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -62,70 +63,85 @@ export default function XTermInstance({ sessionId, onActivity }: XTermInstancePr
     try {
       fitAddon.fit();
     } catch {
-      // ignore initial fit error before layout settles
+      // ignore
     }
 
     let unlistenOutput: (() => void) | undefined;
     let unlistenExit: (() => void) | undefined;
+    let isDisposed = false;
 
-    const setupTauri = async () => {
+    const setupNativePty = async () => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         const { listen } = await import("@tauri-apps/api/event");
 
-        // Send user typing from xterm to Rust PTY
-        term.onData((data) => {
-          invoke("write_terminal", { id: sessionId, data }).catch(() => {});
-        });
-
-        // Listen for output streaming from Rust backend
-        unlistenOutput = await listen<string>(`term-output-${sessionId}`, (event) => {
-          term.write(event.payload);
-          onActivity?.();
-        });
-
-        // Listen for process exit
-        unlistenExit = await listen(`term-exit-${sessionId}`, () => {
-          term.writeln("\r\n\x1b[33m[Process completed]\x1b[0m");
-        });
-
-        // Send initial dimensions to backend
-        if (term.cols && term.rows) {
-          invoke("resize_terminal", {
-            id: sessionId,
-            cols: term.cols,
-            rows: term.rows,
-          }).catch(() => {});
-        }
-      } catch {
-        // Fallback simulated browser terminal
-        term.writeln("\x1b[36m⚡ Running in Web Preview Mode\x1b[0m");
-        term.writeln("Interactive ConPTY available when running in Tauri.\r\n");
-        term.write(`PS ${sessionId}> `);
-
-        term.onData((data) => {
-          if (data === "\r") {
-            term.write(`\r\nPS ${sessionId}> `);
-          } else if (data === "\u007F") {
-            term.write("\b \b");
-          } else {
-            term.write(data);
+        // 1. Listen for output streaming from Rust backend
+        unlistenOutput = await listen<string>(`term-output-${session.id}`, (event) => {
+          if (!isDisposed) {
+            term.write(event.payload);
+            onActivity?.();
           }
         });
+
+        // 2. Listen for process exit
+        unlistenExit = await listen(`term-exit-${session.id}`, () => {
+          if (!isDisposed) {
+            term.writeln("\r\n\x1b[33m[Process exited]\x1b[0m");
+          }
+        });
+
+        // 3. Send user keystrokes from xterm to Rust PTY
+        term.onData((data) => {
+          if (!isDisposed) {
+            invoke("write_terminal", { id: session.id, data }).catch(() => {});
+          }
+        });
+
+        // 4. Spawn the actual native PTY process on the backend
+        await invoke("spawn_terminal", {
+          id: session.id,
+          title: session.title,
+          shell: session.shellOrCommand || "powershell.exe",
+          args: session.args || null,
+          cwd: session.cwd || null,
+          cols: term.cols || 80,
+          rows: term.rows || 24,
+        });
+
+      } catch (err: any) {
+        // Fallback for browser preview mode or error display
+        const errMsg = err?.toString() || "Unknown error";
+        if (errMsg.includes("not found") || errMsg.includes("Failed to spawn")) {
+          term.writeln(`\r\n\x1b[31m[Error launching shell]: ${errMsg}\x1b[0m\r\n`);
+        } else {
+          term.writeln("\x1b[36m⚡ Running in Web Preview Mode\x1b[0m");
+          term.writeln("Interactive ConPTY available when running in Tauri native app.\r\n");
+          term.write(`PS ${session.cwd || "~"}> `);
+
+          term.onData((data) => {
+            if (data === "\r") {
+              term.write(`\r\nPS ${session.cwd || "~"}> `);
+            } else if (data === "\u007F") {
+              term.write("\b \b");
+            } else {
+              term.write(data);
+            }
+          });
+        }
       }
     };
 
-    setupTauri();
+    setupNativePty();
 
     // Auto-fit on container resize observer
     const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current && termRef.current) {
+      if (fitAddonRef.current && termRef.current && !isDisposed) {
         try {
           fitAddonRef.current.fit();
           const cols = termRef.current.cols;
           const rows = termRef.current.rows;
           import("@tauri-apps/api/core").then(({ invoke }) => {
-            invoke("resize_terminal", { id: sessionId, cols, rows }).catch(() => {});
+            invoke("resize_terminal", { id: session.id, cols, rows }).catch(() => {});
           }).catch(() => {});
         } catch {
           // ignore layout transition errors
@@ -136,12 +152,16 @@ export default function XTermInstance({ sessionId, onActivity }: XTermInstancePr
     resizeObserver.observe(containerRef.current);
 
     return () => {
+      isDisposed = true;
       resizeObserver.disconnect();
       if (unlistenOutput) unlistenOutput();
       if (unlistenExit) unlistenExit();
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke("kill_terminal", { id: session.id }).catch(() => {});
+      }).catch(() => {});
       term.dispose();
     };
-  }, [sessionId]);
+  }, [session.id]);
 
   return <div ref={containerRef} className="xterm-instance-container" />;
 }
