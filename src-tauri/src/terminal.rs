@@ -2,6 +2,7 @@ use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 
@@ -20,6 +21,7 @@ pub struct TerminalSession {
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
+    pub is_running: Arc<AtomicBool>,
 }
 
 #[derive(Default)]
@@ -39,11 +41,13 @@ pub async fn spawn_terminal(
     cols: Option<u16>,
     rows: Option<u16>,
 ) -> Result<TerminalInfo, String> {
-    // If a session with this ID already exists, kill it cleanly first
+    // Clean up any existing session with this ID before spawning a new one
     {
-        let mut sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
-        if let Some(mut old_session) = sessions.remove(&id) {
-            let _ = old_session.child.kill();
+        if let Ok(mut sessions) = state.sessions.lock() {
+            if let Some(mut old_session) = sessions.remove(&id) {
+                old_session.is_running.store(false, Ordering::SeqCst);
+                let _ = old_session.child.kill();
+            }
         }
     }
 
@@ -58,9 +62,8 @@ pub async fn spawn_terminal(
 
     let pair = pty_system
         .openpty(size)
-        .map_err(|e| format!("Failed to open PTY subsystem: {}", e))?;
+        .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-    // Determine actual executable and arguments
     let effective_shell = if shell.trim().is_empty() {
         "powershell.exe".to_string()
     } else {
@@ -87,7 +90,7 @@ pub async fn spawn_terminal(
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("Failed to spawn shell '{}': {}", effective_shell, e))?;
+        .map_err(|e| format!("Failed to spawn '{}': {}", effective_shell, e))?;
 
     let pid = child.process_id();
     let reader = pair
@@ -109,13 +112,16 @@ pub async fn spawn_terminal(
         status: "Running".to_string(),
     };
 
-    // Background thread to read stdout/stderr from PTY and emit to frontend
+    let is_running = Arc::new(AtomicBool::new(true));
+    let is_running_clone = Arc::clone(&is_running);
+
+    // Background thread to stream PTY output to frontend
     let app_clone = app.clone();
     let term_id = id.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         let mut reader = reader;
-        loop {
+        while is_running_clone.load(Ordering::Relaxed) {
             match reader.read(&mut buf) {
                 Ok(0) => {
                     let _ = app_clone.emit(&format!("term-exit-{}", term_id), ());
@@ -138,10 +144,12 @@ pub async fn spawn_terminal(
         master: pair.master,
         writer: Arc::new(Mutex::new(writer)),
         child,
+        is_running,
     };
 
-    let mut sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
-    sessions.insert(id, session);
+    if let Ok(mut sessions) = state.sessions.lock() {
+        sessions.insert(id, session);
+    }
 
     Ok(terminal_info)
 }
@@ -152,19 +160,15 @@ pub async fn write_terminal(
     id: String,
     data: String,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
-    if let Some(session) = sessions.get(&id) {
-        if let Ok(mut writer) = session.writer.lock() {
-            let _ = writer.write_all(data.as_bytes());
-            let _ = writer.flush();
-            Ok(())
-        } else {
-            Err("Writer mutex poisoned".to_string())
+    if let Ok(sessions) = state.sessions.lock() {
+        if let Some(session) = sessions.get(&id) {
+            if let Ok(mut writer) = session.writer.lock() {
+                let _ = writer.write_all(data.as_bytes());
+                let _ = writer.flush();
+            }
         }
-    } else {
-        // Return Ok if session already exited gracefully rather than panicking/throwing
-        Ok(())
     }
+    Ok(())
 }
 
 #[tauri::command]
@@ -174,18 +178,17 @@ pub async fn resize_terminal(
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    let sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
-    if let Some(session) = sessions.get(&id) {
-        let _ = session.master.resize(PtySize {
-            rows: rows.max(5),
-            cols: cols.max(10),
-            pixel_width: 0,
-            pixel_height: 0,
-        });
-        Ok(())
-    } else {
-        Ok(())
+    if let Ok(sessions) = state.sessions.lock() {
+        if let Some(session) = sessions.get(&id) {
+            let _ = session.master.resize(PtySize {
+                rows: rows.max(5),
+                cols: cols.max(10),
+                pixel_width: 0,
+                pixel_height: 0,
+            });
+        }
     }
+    Ok(())
 }
 
 #[tauri::command]
@@ -193,20 +196,23 @@ pub async fn kill_terminal(
     state: State<'_, TerminalManager>,
     id: String,
 ) -> Result<(), String> {
-    let mut sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
-    if let Some(mut session) = sessions.remove(&id) {
-        let _ = session.child.kill();
-        Ok(())
-    } else {
-        Ok(())
+    if let Ok(mut sessions) = state.sessions.lock() {
+        if let Some(mut session) = sessions.remove(&id) {
+            session.is_running.store(false, Ordering::SeqCst);
+            let _ = session.child.kill();
+        }
     }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn list_terminals(
     state: State<'_, TerminalManager>,
 ) -> Result<Vec<TerminalInfo>, String> {
-    let sessions = state.sessions.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let list = sessions.values().map(|s| s.info.clone()).collect();
-    Ok(list)
+    if let Ok(sessions) = state.sessions.lock() {
+        let list = sessions.values().map(|s| s.info.clone()).collect();
+        Ok(list)
+    } else {
+        Ok(Vec::new())
+    }
 }

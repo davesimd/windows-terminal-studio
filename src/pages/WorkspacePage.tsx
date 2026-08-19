@@ -7,6 +7,7 @@ import {
   Bot, 
   Minimize2 
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import TerminalSession, { TerminalData } from "../components/terminal/TerminalSession";
 import TerminalToolbar, { GridLayoutMode } from "../components/terminal/TerminalToolbar";
 import LaunchAppModal from "../components/terminal/LaunchAppModal";
@@ -129,7 +130,6 @@ export default function WorkspacePage({
   // Close / Kill a terminal
   const handleCloseTerminal = async (id: string) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       await invoke("kill_terminal", { id });
     } catch {
       // ignore
@@ -175,7 +175,6 @@ export default function WorkspacePage({
   const handleKillAll = async () => {
     for (const t of workspace.terminals) {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
         await invoke("kill_terminal", { id: t.id });
       } catch {
         // ignore
@@ -192,7 +191,6 @@ export default function WorkspacePage({
   // Broadcast command to all running terminals in current workspace
   const handleBroadcast = async (command: string) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       for (const t of workspace.terminals) {
         await invoke("write_terminal", { id: t.id, data: command + "\r" });
       }
@@ -275,7 +273,7 @@ export default function WorkspacePage({
   };
 
   return (
-    <div className="workspace-hub animate-fade">
+    <div className="workspace-hub">
       {/* Top Operations Toolbar */}
       <TerminalToolbar
         terminals={workspace.terminals}
@@ -291,19 +289,19 @@ export default function WorkspacePage({
 
       {/* Maximized / Focus Mode Top Session Switcher Bar */}
       {(workspace.maximizedId || (workspace.gridLayout === "focus" && workspace.terminals.length > 0)) && (
-        <div className="maximized-session-bar animate-fade">
+        <div className="maximized-session-bar">
           <div className="maximized-tabs-scroll">
             <span className="maximized-bar-label">
-              {workspace.maximizedId ? "Maximized View:" : "Active Sessions:"}
+              {workspace.maximizedId ? "Maximized:" : "Focus Tab:"}
             </span>
 
             {workspace.terminals.map((t) => {
-              const isCurrent = workspace.maximizedId 
-                ? workspace.maximizedId === t.id 
-                : workspace.focusedId === t.id;
+              const currentActiveId = workspace.maximizedId || workspace.focusedId || workspace.terminals[0]?.id;
+              const isCurrent = currentActiveId === t.id;
               return (
-                <div
+                <button
                   key={t.id}
+                  type="button"
                   className={`maximized-session-tab ${isCurrent ? "active" : ""}`}
                   onClick={() => {
                     if (workspace.maximizedId) {
@@ -318,7 +316,7 @@ export default function WorkspacePage({
                   {t.lastActiveAt && Date.now() - t.lastActiveAt < 3500 && (
                     <span className="session-tab-live-dot" />
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -326,6 +324,7 @@ export default function WorkspacePage({
           <div className="maximized-bar-actions">
             {workspace.maximizedId && (
               <button
+                type="button"
                 className="btn-restore-grid"
                 onClick={() => onUpdateWorkspace({ maximizedId: null })}
                 title="Restore grid view"
@@ -369,27 +368,30 @@ export default function WorkspacePage({
           </div>
         ) : (
           <div ref={containerRef} className="terminals-viewport-container">
-            {/* Maximized or Focus Mode */}
+            {/* Maximized or Focus Mode (All panes mounted, only active pane visible) */}
             {(workspace.maximizedId || workspace.gridLayout === "focus") && (
               <div className="single-terminal-view">
-                {(() => {
+                {workspace.terminals.map((term) => {
                   const targetId = workspace.maximizedId || workspace.focusedId || workspace.terminals[0]?.id;
-                  const term = workspace.terminals.find((t) => t.id === targetId) || workspace.terminals[0];
-                  if (!term) return null;
+                  const isVisible = term.id === targetId;
                   return (
-                    <TerminalSession
+                    <div
                       key={term.id}
-                      session={term}
-                      isMaximized={Boolean(workspace.maximizedId)}
-                      onMaximizeToggle={(id) => onUpdateWorkspace({
-                        maximizedId: workspace.maximizedId === id ? null : id
-                      })}
-                      onClose={handleCloseTerminal}
-                      onRestart={handleRestartTerminal}
-                      onSessionActivity={handleSessionActivity}
-                    />
+                      className={`focus-pane-layer ${isVisible ? "active" : ""}`}
+                    >
+                      <TerminalSession
+                        session={term}
+                        isMaximized={Boolean(workspace.maximizedId)}
+                        onMaximizeToggle={(id) => onUpdateWorkspace({
+                          maximizedId: workspace.maximizedId === id ? null : id
+                        })}
+                        onClose={handleCloseTerminal}
+                        onRestart={handleRestartTerminal}
+                        onSessionActivity={handleSessionActivity}
+                      />
+                    </div>
                   );
-                })()}
+                })}
               </div>
             )}
 

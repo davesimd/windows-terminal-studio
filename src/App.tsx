@@ -493,21 +493,17 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="app-main">
-          {activeNav === "home" && <HomePage />}
+          <div className={`page-view-layer ${activeNav === "home" ? "active" : ""}`}>
+            {activeNav === "home" && <HomePage />}
+          </div>
 
-          {/* Workspaces: Kept persistent and alive so background processes and AI agents are never reset */}
+          {/* Workspaces: Maintained with persistent absolute geometry to prevent canvas resize flash */}
           {workspaces.map((ws) => {
             const isVisible = activeNav === "workspace" && ws.id === activeWorkspaceId;
             return (
               <div
                 key={ws.id}
-                style={{
-                  display: isVisible ? "flex" : "none",
-                  flexDirection: "column",
-                  height: "100%",
-                  width: "100%",
-                  overflow: "hidden",
-                }}
+                className={`workspace-view-layer ${isVisible ? "active" : ""}`}
               >
                 <WorkspacePage
                   workspace={ws}
@@ -523,30 +519,34 @@ export default function App() {
             );
           })}
 
-          {activeNav === "analytics" && (
-            <AnalyticsPage
-              workspaces={workspaces}
-              sessionHistory={sessionHistory}
-              onNavigateToWorkspace={(wsId) => {
-                setActiveWorkspaceId(wsId);
-                setActiveNav("workspace");
-              }}
-              onClearHistory={handleClearHistory}
-            />
-          )}
+          <div className={`page-view-layer ${activeNav === "analytics" ? "active" : ""}`}>
+            {activeNav === "analytics" && (
+              <AnalyticsPage
+                workspaces={workspaces}
+                sessionHistory={sessionHistory}
+                onNavigateToWorkspace={(wsId) => {
+                  setActiveWorkspaceId(wsId);
+                  setActiveNav("workspace");
+                }}
+                onClearHistory={handleClearHistory}
+              />
+            )}
+          </div>
 
-          {activeNav === "settings" && (
-            <SettingsPage
-              settings={settings}
-              workspaces={workspaces}
-              onUpdateSettings={handleUpdateSettings}
-              onRestoreWorkspaces={(imported) => {
-                setWorkspaces(imported);
-                if (imported.length > 0) setActiveWorkspaceId(imported[0].id);
-              }}
-              onResetToDefaults={handleResetToDefaults}
-            />
-          )}
+          <div className={`page-view-layer ${activeNav === "settings" ? "active" : ""}`}>
+            {activeNav === "settings" && (
+              <SettingsPage
+                settings={settings}
+                workspaces={workspaces}
+                onUpdateSettings={handleUpdateSettings}
+                onRestoreWorkspaces={(imported) => {
+                  setWorkspaces(imported);
+                  if (imported.length > 0) setActiveWorkspaceId(imported[0].id);
+                }}
+                onResetToDefaults={handleResetToDefaults}
+              />
+            )}
+          </div>
         </main>
       </div>
     </div>

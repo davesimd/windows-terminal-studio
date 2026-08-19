@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { TerminalData } from "./TerminalSession";
 import "@xterm/xterm/css/xterm.css";
 
@@ -59,7 +61,6 @@ export default function XTermInstance({ session, onActivity }: XTermInstanceProp
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Initial fit
     try {
       fitAddon.fit();
     } catch {
@@ -72,9 +73,6 @@ export default function XTermInstance({ session, onActivity }: XTermInstanceProp
 
     const setupNativePty = async () => {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const { listen } = await import("@tauri-apps/api/event");
-
         // 1. Listen for output streaming from Rust backend
         unlistenOutput = await listen<string>(`term-output-${session.id}`, (event) => {
           if (!isDisposed) {
@@ -133,18 +131,19 @@ export default function XTermInstance({ session, onActivity }: XTermInstanceProp
 
     setupNativePty();
 
-    // Auto-fit on container resize observer
-    const resizeObserver = new ResizeObserver(() => {
-      if (fitAddonRef.current && termRef.current && !isDisposed) {
-        try {
-          fitAddonRef.current.fit();
-          const cols = termRef.current.cols;
-          const rows = termRef.current.rows;
-          import("@tauri-apps/api/core").then(({ invoke }) => {
+    // Auto-fit on container resize observer with guard
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry && entry.contentRect.width > 50 && entry.contentRect.height > 50) {
+        if (fitAddonRef.current && termRef.current && !isDisposed) {
+          try {
+            fitAddonRef.current.fit();
+            const cols = termRef.current.cols;
+            const rows = termRef.current.rows;
             invoke("resize_terminal", { id: session.id, cols, rows }).catch(() => {});
-          }).catch(() => {});
-        } catch {
-          // ignore layout transition errors
+          } catch {
+            // ignore layout transition errors
+          }
         }
       }
     });
@@ -156,9 +155,7 @@ export default function XTermInstance({ session, onActivity }: XTermInstanceProp
       resizeObserver.disconnect();
       if (unlistenOutput) unlistenOutput();
       if (unlistenExit) unlistenExit();
-      import("@tauri-apps/api/core").then(({ invoke }) => {
-        invoke("kill_terminal", { id: session.id }).catch(() => {});
-      }).catch(() => {});
+      invoke("kill_terminal", { id: session.id }).catch(() => {});
       term.dispose();
     };
   }, [session.id]);
