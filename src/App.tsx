@@ -163,8 +163,6 @@ export default function App() {
     }
   }, [sessionHistory, settings.persistAnalyticsHistory]);
 
-  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
-
   // Helper to compute workspace activity state
   const getWorkspaceActivityState = (ws: WorkspaceData): WorkspaceActivityState => {
     if (ws.terminals.length === 0) return "empty";
@@ -224,13 +222,14 @@ export default function App() {
     setEditingWsId(null);
   };
 
-  // Update current workspace partial state or functional updater
-  const handleUpdateActiveWorkspace = (
+  // Update a specific workspace by ID (supports partial object or functional updater)
+  const handleUpdateWorkspaceById = (
+    wsId: string,
     updater: Partial<WorkspaceData> | ((prev: WorkspaceData) => WorkspaceData)
   ) => {
     setWorkspaces((prev) =>
       prev.map((w) => {
-        if (w.id !== activeWorkspaceId) return w;
+        if (w.id !== wsId) return w;
         if (typeof updater === "function") {
           return updater(w);
         }
@@ -495,19 +494,35 @@ export default function App() {
         {/* Main Content Area */}
         <main className="app-main">
           {activeNav === "home" && <HomePage />}
-          {activeNav === "workspace" && activeWorkspace && (
-            <WorkspacePage
-              key={activeWorkspace.id}
-              workspace={activeWorkspace}
-              onUpdateWorkspace={handleUpdateActiveWorkspace}
-              onRenameWorkspace={(newName) => handleUpdateActiveWorkspace({ name: newName })}
-              onLogSessionStart={handleLogSessionStart}
-              onLogSessionEnd={handleLogSessionEnd}
-              directoryTemplates={settings.directoryTemplates || []}
-              defaultCwd={settings.defaultCwd || ""}
-              onSaveDirectoryTemplate={handleSaveDirectoryTemplate}
-            />
-          )}
+
+          {/* Workspaces: Kept persistent and alive so background processes and AI agents are never reset */}
+          {workspaces.map((ws) => {
+            const isVisible = activeNav === "workspace" && ws.id === activeWorkspaceId;
+            return (
+              <div
+                key={ws.id}
+                style={{
+                  display: isVisible ? "flex" : "none",
+                  flexDirection: "column",
+                  height: "100%",
+                  width: "100%",
+                  overflow: "hidden",
+                }}
+              >
+                <WorkspacePage
+                  workspace={ws}
+                  onUpdateWorkspace={(updated) => handleUpdateWorkspaceById(ws.id, updated)}
+                  onRenameWorkspace={(newName) => handleUpdateWorkspaceById(ws.id, { name: newName })}
+                  onLogSessionStart={handleLogSessionStart}
+                  onLogSessionEnd={handleLogSessionEnd}
+                  directoryTemplates={settings.directoryTemplates || []}
+                  defaultCwd={settings.defaultCwd || ""}
+                  onSaveDirectoryTemplate={handleSaveDirectoryTemplate}
+                />
+              </div>
+            );
+          })}
+
           {activeNav === "analytics" && (
             <AnalyticsPage
               workspaces={workspaces}
@@ -519,6 +534,7 @@ export default function App() {
               onClearHistory={handleClearHistory}
             />
           )}
+
           {activeNav === "settings" && (
             <SettingsPage
               settings={settings}
