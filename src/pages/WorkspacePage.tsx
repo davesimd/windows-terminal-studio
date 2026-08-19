@@ -298,8 +298,8 @@ export default function WorkspacePage({
 
   const getAppIcon = (appType: TerminalData["appType"]) => {
     switch (appType) {
-      case "gemini":
-        return <Sparkles size={13} className="text-blue-400" />;
+      case "antigravity":
+        return <Sparkles size={13} className="text-cyan-400" />;
       case "claude":
         return <Bot size={13} className="text-orange-400" />;
       case "kilo":
