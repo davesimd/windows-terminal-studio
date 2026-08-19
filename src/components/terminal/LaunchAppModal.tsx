@@ -13,7 +13,7 @@ import {
   BookmarkPlus, 
   Compass, 
   RotateCcw, 
-  CheckCircle2 
+  CheckCircle2
 } from "lucide-react";
 import { TerminalData } from "./TerminalSession";
 import { DirectoryTemplate } from "../../types/settings";
@@ -38,17 +38,25 @@ interface Preset {
   icon: React.ReactNode;
 }
 
-const PRESETS: Preset[] = [
+const CATEGORIES = [
   {
-    id: "kilo",
-    title: "Kilo CLI",
-    category: "ai",
-    appType: "kilo",
-    shellOrCommand: "powershell.exe",
-    args: ["-NoExit", "-Command", "kilo"],
-    description: "Launch Kilo terminal editor / assistant directly",
-    icon: <Zap size={18} className="text-yellow-400" />,
+    id: "ai" as const,
+    title: "AI Developer Agents",
+    icon: <Sparkles size={14} className="text-cyan-400" />,
   },
+  {
+    id: "shell" as const,
+    title: "System Shells & Environments",
+    icon: <Terminal size={14} className="text-indigo-400" />,
+  },
+  {
+    id: "dev" as const,
+    title: "Developer Tools & Custom",
+    icon: <Layers size={14} className="text-emerald-400" />,
+  },
+];
+
+const PRESETS: Preset[] = [
   {
     id: "antigravity",
     title: "Antigravity CLI",
@@ -56,7 +64,7 @@ const PRESETS: Preset[] = [
     appType: "antigravity",
     shellOrCommand: "powershell.exe",
     args: ["-NoExit", "-Command", "agy"],
-    description: "Launch Google Antigravity (agy) AI assistant directly",
+    description: "Google Antigravity (agy) interactive AI coding agent",
     icon: <Sparkles size={18} className="text-cyan-400" />,
   },
   {
@@ -66,8 +74,18 @@ const PRESETS: Preset[] = [
     appType: "claude",
     shellOrCommand: "powershell.exe",
     args: ["-NoExit", "-Command", "claude"],
-    description: "Launch Claude Code AI interactive assistant",
+    description: "Anthropic Claude Code interactive terminal assistant",
     icon: <Bot size={18} className="text-orange-400" />,
+  },
+  {
+    id: "kilo",
+    title: "Kilo CLI",
+    category: "ai",
+    appType: "kilo",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "kilo"],
+    description: "Kilo lightweight terminal editor / coding agent",
+    icon: <Zap size={18} className="text-yellow-400" />,
   },
   {
     id: "powershell",
@@ -76,7 +94,7 @@ const PRESETS: Preset[] = [
     appType: "powershell",
     shellOrCommand: "powershell.exe",
     args: ["-NoLogo"],
-    description: "Windows PowerShell environment",
+    description: "Native Windows PowerShell environment",
     icon: <Terminal size={18} className="text-indigo-400" />,
   },
   {
@@ -194,48 +212,59 @@ export default function LaunchAppModal({
         </div>
 
         <div className="modal-body">
-          {/* Preset Selector */}
-          <div className="preset-grid">
-            {PRESETS.map((preset) => {
-              const isSelected = !isCustomMode && selectedPreset.id === preset.id;
-              return (
-                <div
-                  key={preset.id}
-                  className={`preset-card ${isSelected ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelectedPreset(preset);
-                    setIsCustomMode(false);
-                  }}
-                >
-                  <div className="preset-card-icon">{preset.icon}</div>
-                  <div className="preset-card-info">
-                    <div className="preset-card-title">
-                      <span>{preset.title}</span>
-                      {isSelected && <Check size={14} className="text-indigo-400" />}
-                    </div>
-                    <span className="preset-card-desc">{preset.description}</span>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Custom Mode Card */}
-            <div
-              className={`preset-card ${isCustomMode ? "selected" : ""}`}
-              onClick={() => setIsCustomMode(true)}
-            >
-              <div className="preset-card-icon">
-                <Code2 size={18} className="text-purple-400" />
+          {/* Categorized Presets */}
+          {CATEGORIES.map((cat) => (
+            <div key={cat.id} className="preset-category-section">
+              <div className="preset-category-header">
+                <span className="preset-category-icon">{cat.icon}</span>
+                <span className="preset-category-title">{cat.title}</span>
               </div>
-              <div className="preset-card-info">
-                <div className="preset-card-title">
-                  <span>Custom App / Command</span>
-                  {isCustomMode && <Check size={14} className="text-indigo-400" />}
-                </div>
-                <span className="preset-card-desc">Run any CLI script or executable</span>
+
+              <div className="preset-grid">
+                {PRESETS.filter((p) => p.category === cat.id).map((preset) => {
+                  const isSelected = !isCustomMode && selectedPreset.id === preset.id;
+                  return (
+                    <div
+                      key={preset.id}
+                      className={`preset-card ${isSelected ? "selected" : ""}`}
+                      onClick={() => {
+                        setSelectedPreset(preset);
+                        setIsCustomMode(false);
+                      }}
+                    >
+                      <div className="preset-card-icon">{preset.icon}</div>
+                      <div className="preset-card-info">
+                        <div className="preset-card-title">
+                          <span>{preset.title}</span>
+                          {isSelected && <Check size={14} className="text-indigo-400" />}
+                        </div>
+                        <span className="preset-card-desc">{preset.description}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Custom Command Card under Developer Tools */}
+                {cat.id === "dev" && (
+                  <div
+                    className={`preset-card ${isCustomMode ? "selected" : ""}`}
+                    onClick={() => setIsCustomMode(true)}
+                  >
+                    <div className="preset-card-icon">
+                      <Code2 size={18} className="text-purple-400" />
+                    </div>
+                    <div className="preset-card-info">
+                      <div className="preset-card-title">
+                        <span>Custom App / Command</span>
+                        {isCustomMode && <Check size={14} className="text-indigo-400" />}
+                      </div>
+                      <span className="preset-card-desc">Run any CLI script or executable</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
+          ))}
 
           {/* Configuration Fields */}
           <div className="modal-form-section">
