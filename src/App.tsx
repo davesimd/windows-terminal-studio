@@ -224,10 +224,18 @@ export default function App() {
     setEditingWsId(null);
   };
 
-  // Update current workspace partial state
-  const handleUpdateActiveWorkspace = (updated: Partial<WorkspaceData>) => {
+  // Update current workspace partial state or functional updater
+  const handleUpdateActiveWorkspace = (
+    updater: Partial<WorkspaceData> | ((prev: WorkspaceData) => WorkspaceData)
+  ) => {
     setWorkspaces((prev) =>
-      prev.map((w) => (w.id === activeWorkspace.id ? { ...w, ...updated } : w))
+      prev.map((w) => {
+        if (w.id !== activeWorkspaceId) return w;
+        if (typeof updater === "function") {
+          return updater(w);
+        }
+        return { ...w, ...updater };
+      })
     );
   };
 

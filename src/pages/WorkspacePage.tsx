@@ -17,7 +17,7 @@ import { DirectoryTemplate } from "../types/settings";
 
 interface WorkspacePageProps {
   workspace: WorkspaceData;
-  onUpdateWorkspace: (updated: Partial<WorkspaceData>) => void;
+  onUpdateWorkspace: (updated: Partial<WorkspaceData> | ((prev: WorkspaceData) => WorkspaceData)) => void;
   onRenameWorkspace?: (newName: string) => void;
   onLogSessionStart?: (session: HistoricalSession) => void;
   onLogSessionEnd?: (sessionId: string) => void;
@@ -75,10 +75,11 @@ export default function WorkspacePage({
       outputChunksCount: 0,
     });
 
-    onUpdateWorkspace({
-      terminals: [...workspace.terminals, newSession],
+    onUpdateWorkspace((prev) => ({
+      ...prev,
+      terminals: [...prev.terminals, newSession],
       focusedId: newSession.id,
-    });
+    }));
   };
 
   // Quick launch helper
@@ -136,20 +137,22 @@ export default function WorkspacePage({
 
     onLogSessionEnd?.(id);
 
-    const remaining = workspace.terminals.filter((t) => t.id !== id);
-    let nextFocused = workspace.focusedId;
-    if (workspace.focusedId === id && remaining.length > 0) {
-      nextFocused = remaining[0].id;
-    }
-    let nextMaximized = workspace.maximizedId;
-    if (workspace.maximizedId === id) {
-      nextMaximized = remaining.length > 0 ? remaining[0].id : null;
-    }
-
-    onUpdateWorkspace({
-      terminals: remaining,
-      focusedId: nextFocused,
-      maximizedId: nextMaximized,
+    onUpdateWorkspace((prev) => {
+      const remaining = prev.terminals.filter((t) => t.id !== id);
+      let nextFocused = prev.focusedId;
+      if (prev.focusedId === id && remaining.length > 0) {
+        nextFocused = remaining[0].id;
+      }
+      let nextMaximized = prev.maximizedId;
+      if (prev.maximizedId === id) {
+        nextMaximized = remaining.length > 0 ? remaining[0].id : null;
+      }
+      return {
+        ...prev,
+        terminals: remaining,
+        focusedId: nextFocused,
+        maximizedId: nextMaximized,
+      };
     });
   };
 
@@ -198,21 +201,8 @@ export default function WorkspacePage({
     }
   };
 
-  // Track session activity timestamp
-  const handleSessionActivity = (id: string) => {
-    onUpdateWorkspace({
-      terminals: workspace.terminals.map((t) =>
-        t.id === id 
-          ? { 
-              ...t, 
-              lastActiveAt: Date.now(), 
-              status: "running",
-              outputChunksCount: (t.outputChunksCount || 0) + 1 
-            } 
-          : t
-      ),
-    });
-  };
+  // Session activity handler (local visual pulse managed in TerminalSession)
+  const handleSessionActivity = () => {};
 
   const [isDragging, setIsDragging] = useState(false);
 
