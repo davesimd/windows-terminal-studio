@@ -218,6 +218,8 @@ export default function AnalyticsPage({
 
   const getToolIcon = (appType: string) => {
     switch (appType) {
+      case "antigravity":
+        return <Zap size={14} className="text-cyan-400" />;
       case "gemini":
         return <Sparkles size={14} className="text-blue-400" />;
       case "claude":
@@ -429,6 +431,7 @@ export default function AnalyticsPage({
               onChange={(e) => setFilterTool(e.target.value)}
             >
               <option value="all">All Tools</option>
+              <option value="antigravity">Antigravity CLI</option>
               <option value="powershell">PowerShell</option>
               <option value="kilo">Kilo CLI</option>
               <option value="gemini">Gemini CLI</option>

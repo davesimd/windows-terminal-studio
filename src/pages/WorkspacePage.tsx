@@ -114,12 +114,12 @@ export default function WorkspacePage({
           cwd: targetCwd,
         });
         break;
-      case "gemini":
+      case "antigravity":
         spawnTerminal({
-          title: "Gemini CLI",
-          appType: "gemini",
+          title: "Antigravity CLI",
+          appType: "antigravity",
           shellOrCommand: "powershell.exe",
-          args: ["-NoExit", "-Command", "gemini"],
+          args: ["-NoExit", "-Command", "agy"],
           cwd: targetCwd,
         });
         break;
@@ -404,7 +404,7 @@ export default function WorkspacePage({
               <TermIcon size={36} className="text-indigo-400" />
             </div>
             <h3>No Active Terminals in {workspace.name}</h3>
-            <p>Launch PowerShell, Kilo CLI, Gemini CLI, Claude Code, or custom commands in this workspace.</p>
+            <p>Launch PowerShell, Kilo CLI, Antigravity CLI, Claude Code, or custom commands in this workspace.</p>
 
             <div className="empty-quick-buttons">
               <button className="btn-primary" onClick={() => setIsLaunchModalOpen(true)}>
@@ -415,9 +415,9 @@ export default function WorkspacePage({
                 <Zap size={15} className="text-yellow-400" />
                 <span>Launch Kilo</span>
               </button>
-              <button className="btn-secondary" onClick={() => handleQuickSpawn("gemini")}>
-                <Sparkles size={15} className="text-blue-400" />
-                <span>Launch Gemini</span>
+              <button className="btn-secondary" onClick={() => handleQuickSpawn("antigravity")}>
+                <Sparkles size={15} className="text-cyan-400" />
+                <span>Launch Antigravity</span>
               </button>
               <button className="btn-secondary" onClick={() => handleQuickSpawn("claude")}>
                 <Bot size={15} className="text-orange-400" />

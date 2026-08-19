@@ -65,11 +65,11 @@ export default function TerminalToolbar({
 
           <button 
             className="btn-quick-preset" 
-            title="Quick launch Gemini CLI"
-            onClick={() => onQuickSpawn("gemini")}
+            title="Quick launch Google Antigravity CLI (agy)"
+            onClick={() => onQuickSpawn("antigravity")}
           >
-            <Sparkles size={14} className="text-blue-400" />
-            <span>Gemini</span>
+            <Sparkles size={14} className="text-cyan-400" />
+            <span>Antigravity</span>
           </button>
 
           <button 

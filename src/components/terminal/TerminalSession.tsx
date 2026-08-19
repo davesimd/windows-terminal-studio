@@ -15,7 +15,7 @@ import XTermInstance from "./XTermInstance";
 export interface TerminalData {
   id: string;
   title: string;
-  appType: "powershell" | "cmd" | "wsl" | "gemini" | "claude" | "kilo" | "custom";
+  appType: "powershell" | "cmd" | "wsl" | "antigravity" | "gemini" | "claude" | "kilo" | "custom";
   shellOrCommand: string;
   args?: string[];
   cwd?: string;
@@ -53,6 +53,8 @@ export default function TerminalSession({
 
   const getAppIcon = () => {
     switch (session.appType) {
+      case "antigravity":
+        return <Zap size={14} className="text-cyan-400" />;
       case "gemini":
         return <Sparkles size={14} className="text-blue-400" />;
       case "claude":

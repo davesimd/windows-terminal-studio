@@ -3,7 +3,7 @@ export interface HistoricalSession {
   workspaceId: string;
   workspaceName: string;
   title: string;
-  appType: "powershell" | "cmd" | "wsl" | "gemini" | "claude" | "kilo" | "custom";
+  appType: "powershell" | "cmd" | "wsl" | "antigravity" | "gemini" | "claude" | "kilo" | "custom";
   shellOrCommand: string;
   cwd?: string;
   pid?: number;
@@ -15,7 +15,7 @@ export interface HistoricalSession {
 }
 
 export interface ToolUsageStat {
-  appType: "powershell" | "cmd" | "wsl" | "gemini" | "claude" | "kilo" | "custom";
+  appType: "powershell" | "cmd" | "wsl" | "antigravity" | "gemini" | "claude" | "kilo" | "custom";
   title: string;
   count: number;
   totalDurationSeconds: number;
