@@ -56,11 +56,11 @@ export default function TerminalToolbar({
 
           <button 
             className="btn-quick-preset" 
-            title="Quick launch Kilo CLI"
-            onClick={() => onQuickSpawn("kilo")}
+            title="Quick launch Claude Code"
+            onClick={() => onQuickSpawn("claude")}
           >
-            <Zap size={14} className="text-yellow-400" />
-            <span>Kilo</span>
+            <Bot size={14} className="text-orange-400" />
+            <span>Claude</span>
           </button>
 
           <button 
@@ -74,11 +74,11 @@ export default function TerminalToolbar({
 
           <button 
             className="btn-quick-preset" 
-            title="Quick launch Claude Code"
-            onClick={() => onQuickSpawn("claude")}
+            title="Quick launch Kilo CLI"
+            onClick={() => onQuickSpawn("kilo")}
           >
-            <Bot size={14} className="text-orange-400" />
-            <span>Claude</span>
+            <Zap size={14} className="text-yellow-400" />
+            <span>Kilo</span>
           </button>
         </div>
       </div>

@@ -411,17 +411,17 @@ export default function WorkspacePage({
                 <Plus size={15} />
                 <span>Launch Application</span>
               </button>
-              <button className="btn-secondary" onClick={() => handleQuickSpawn("kilo")}>
-                <Zap size={15} className="text-yellow-400" />
-                <span>Launch Kilo</span>
+              <button className="btn-secondary" onClick={() => handleQuickSpawn("claude")}>
+                <Bot size={15} className="text-orange-400" />
+                <span>Launch Claude</span>
               </button>
               <button className="btn-secondary" onClick={() => handleQuickSpawn("antigravity")}>
                 <Sparkles size={15} className="text-cyan-400" />
                 <span>Launch Antigravity</span>
               </button>
-              <button className="btn-secondary" onClick={() => handleQuickSpawn("claude")}>
-                <Bot size={15} className="text-orange-400" />
-                <span>Launch Claude</span>
+              <button className="btn-secondary" onClick={() => handleQuickSpawn("kilo")}>
+                <Zap size={15} className="text-yellow-400" />
+                <span>Launch Kilo</span>
               </button>
             </div>
           </div>

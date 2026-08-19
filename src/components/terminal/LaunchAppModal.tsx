@@ -58,16 +58,6 @@ const CATEGORIES = [
 
 const PRESETS: Preset[] = [
   {
-    id: "antigravity",
-    title: "Antigravity CLI",
-    category: "ai",
-    appType: "antigravity",
-    shellOrCommand: "powershell.exe",
-    args: ["-NoExit", "-Command", "agy"],
-    description: "Google Antigravity (agy) interactive AI coding agent",
-    icon: <Sparkles size={18} className="text-cyan-400" />,
-  },
-  {
     id: "claude",
     title: "Claude Code",
     category: "ai",
@@ -76,6 +66,16 @@ const PRESETS: Preset[] = [
     args: ["-NoExit", "-Command", "claude"],
     description: "Anthropic Claude Code interactive terminal assistant",
     icon: <Bot size={18} className="text-orange-400" />,
+  },
+  {
+    id: "antigravity",
+    title: "Antigravity CLI",
+    category: "ai",
+    appType: "antigravity",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "agy"],
+    description: "Google Antigravity (agy) interactive AI coding agent",
+    icon: <Sparkles size={18} className="text-cyan-400" />,
   },
   {
     id: "kilo",
