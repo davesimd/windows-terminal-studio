@@ -15,7 +15,8 @@ dist-ssr
 # Tauri / Rust target
 src-tauri/target
 target
-*.exe
-*.msi
 *.pdb
 
+# Allow release binaries in releases/
+!releases/*.exe
+!releases/*.msi
