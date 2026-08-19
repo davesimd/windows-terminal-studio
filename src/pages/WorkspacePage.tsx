@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { 
   Terminal as TermIcon, 
   Plus, 
@@ -232,13 +232,6 @@ export default function WorkspacePage({
       ),
     });
   };
-
-  // Automatically spawn an initial PowerShell terminal on first mount if workspace is empty
-  useEffect(() => {
-    if (workspace.terminals.length === 0) {
-      handleQuickSpawn("powershell");
-    }
-  }, [workspace.id]);
 
   // Compute dynamic grid style based on layout mode and active terminals
   const getGridStyle = (): React.CSSProperties => {
