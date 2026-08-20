@@ -1,5 +1,5 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Prevents additional console window on Windows in all build profiles
+#![windows_subsystem = "windows"]
 
 #[cfg(target_os = "windows")]
 fn ensure_webview2_loader() {

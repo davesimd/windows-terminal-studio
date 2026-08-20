@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { 
   Home, 
   BarChart3, 
@@ -14,9 +15,11 @@ import HomePage from "./pages/HomePage";
 import WorkspacePage from "./pages/WorkspacePage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
-import { WorkspaceData, WorkspaceActivityState } from "./types/workspace";
+import LaunchAppModal from "./components/terminal/LaunchAppModal";
+import { TerminalData } from "./components/terminal/TerminalSession";
+import { WorkspaceData, ClosedWorkspaceData, WorkspaceActivityState } from "./types/workspace";
 import { HistoricalSession } from "./types/analytics";
-import { AppSettings, DEFAULT_APP_SETTINGS, DEFAULT_DIRECTORY_TEMPLATES } from "./types/settings";
+import { AppSettings, DEFAULT_APP_SETTINGS, DEFAULT_DIRECTORY_TEMPLATES, DEFAULT_VISIBLE_AGENTS } from "./types/settings";
 import "./App.css";
 
 type NavTab = "home" | "workspace" | "analytics" | "settings";
@@ -24,6 +27,7 @@ type NavTab = "home" | "workspace" | "analytics" | "settings";
 const STORAGE_KEYS = {
   SETTINGS: "desktop_studio_settings_v1",
   WORKSPACES: "desktop_studio_workspaces_v1",
+  CLOSED_WORKSPACES: "desktop_studio_closed_workspaces_v1",
   TELEMETRY: "desktop_studio_telemetry_v1",
   ACTIVE_WS: "desktop_studio_active_ws_v1",
 };
@@ -54,6 +58,9 @@ export default function App() {
           ...DEFAULT_APP_SETTINGS,
           ...parsed,
           directoryTemplates: templates.length > 0 ? templates : DEFAULT_DIRECTORY_TEMPLATES,
+          pinnedQuickPresets: parsed.pinnedQuickPresets || DEFAULT_APP_SETTINGS.pinnedQuickPresets,
+          visibleAgents: parsed.visibleAgents || DEFAULT_VISIBLE_AGENTS,
+          detectedAgents: parsed.detectedAgents || {},
         };
       }
     } catch {
@@ -62,7 +69,49 @@ export default function App() {
     return DEFAULT_APP_SETTINGS;
   });
 
-  const [activeNav, setActiveNav] = useState<NavTab>("workspace");
+  const [activeNav, setActiveNav] = useState<NavTab>("home");
+
+  // Auto-detect installed CLI tools & AI agents on boot
+  useEffect(() => {
+    const runToolDetection = async () => {
+      try {
+        const results = await invoke<Record<string, boolean>>("detect_installed_tools");
+        if (results && typeof results === "object") {
+          setSettings((prev) => {
+            const hasExisting = prev.visibleAgents && Object.keys(prev.visibleAgents).length > 0;
+            const updatedVisible = { ...(prev.visibleAgents || DEFAULT_VISIBLE_AGENTS) };
+
+            // If auto-detect is enabled or first boot, initialize/sync visibility with detection
+            if (!hasExisting || prev.autoDetectAgentsOnBoot !== false) {
+              for (const [id, isInstalled] of Object.entries(results)) {
+                if (id === "powershell" || id === "cmd" || id === "wsl" || id === "gitbash") {
+                  if (updatedVisible[id] === undefined) updatedVisible[id] = true;
+                } else if (!hasExisting) {
+                  // First run: set AI agent visibility to detected status
+                  updatedVisible[id] = isInstalled;
+                } else if (prev.autoDetectAgentsOnBoot !== false) {
+                  // If newly detected on system PATH and was previously undefined, enable it
+                  if (isInstalled && updatedVisible[id] === undefined) {
+                    updatedVisible[id] = true;
+                  }
+                }
+              }
+            }
+
+            return {
+              ...prev,
+              detectedAgents: results,
+              visibleAgents: updatedVisible,
+            };
+          });
+        }
+      } catch (err) {
+        console.warn("Tool detection not available (non-Tauri or error):", err);
+      }
+    };
+
+    runToolDetection();
+  }, []);
 
   // Load initial workspaces from localStorage
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>(() => {
@@ -88,6 +137,20 @@ export default function App() {
     return INITIAL_WORKSPACES;
   });
 
+  // Load closed workspaces history (ignoring empty workspaces with no terminals)
+  const [closedWorkspaces, setClosedWorkspaces] = useState<ClosedWorkspaceData[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CLOSED_WORKSPACES);
+      if (saved) {
+        const parsed: ClosedWorkspaceData[] = JSON.parse(saved);
+        return parsed.filter((w) => w.terminals && w.terminals.length > 0);
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_WS);
@@ -97,6 +160,10 @@ export default function App() {
     }
     return "ws_default";
   });
+
+  // Home modal trigger state for custom process
+  const [homeLaunchModalWsId, setHomeLaunchModalWsId] = useState<string | null>(null);
+
 
   // Load initial session history
   const [sessionHistory, setSessionHistory] = useState<HistoricalSession[]>(() => {
@@ -152,6 +219,21 @@ export default function App() {
     }
   }, [settings]);
 
+  // Synchronize dynamic application theme (Sage vs Gold)
+  useEffect(() => {
+    const currentTheme = settings.theme || "sage";
+    document.documentElement.setAttribute("data-theme", currentTheme);
+  }, [settings.theme]);
+
+  // Save closed workspaces history to persistent storage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CLOSED_WORKSPACES, JSON.stringify(closedWorkspaces));
+    } catch (err) {
+      console.error("Failed to save closed workspaces:", err);
+    }
+  }, [closedWorkspaces]);
+
   // Save telemetry history to persistent storage
   useEffect(() => {
     if (settings.persistAnalyticsHistory) {
@@ -191,10 +273,25 @@ export default function App() {
     setActiveNav("workspace");
   };
 
-  // Delete a workspace
+  // Delete a workspace and record in closedWorkspaces only if it had terminals
   const handleDeleteWorkspace = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (workspaces.length <= 1) return; // Keep at least one
+
+    const targetWs = workspaces.find((w) => w.id === id);
+    // Only record into history if the workspace had at least one terminal
+    if (targetWs && targetWs.terminals.length > 0) {
+      const closedEntry: ClosedWorkspaceData = {
+        id: targetWs.id,
+        name: targetWs.name,
+        defaultCwd: targetWs.defaultCwd,
+        terminals: targetWs.terminals,
+        gridLayout: targetWs.gridLayout,
+        createdAt: targetWs.createdAt,
+        closedAt: Date.now(),
+      };
+      setClosedWorkspaces((prev) => [closedEntry, ...prev.filter((w) => w.id !== id)]);
+    }
 
     setWorkspaces((prev) => {
       const remaining = prev.filter((w) => w.id !== id);
@@ -203,6 +300,167 @@ export default function App() {
       }
       return remaining;
     });
+  };
+
+  // Reopen a previously closed workspace
+  const handleReopenWorkspace = (closedWs: ClosedWorkspaceData) => {
+    const restoredId = `ws_${Date.now()}`;
+    const restoredWs: WorkspaceData = {
+      id: restoredId,
+      name: closedWs.name,
+      defaultCwd: closedWs.defaultCwd,
+      terminals: closedWs.terminals.map((t) => ({
+        ...t,
+        id: `term_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        status: "running",
+        startedAt: Date.now(),
+        outputChunksCount: 0,
+      })),
+      gridLayout: closedWs.gridLayout,
+      focusedId: null,
+      maximizedId: null,
+      createdAt: Date.now(),
+    };
+
+    // Log newly spawned sessions to telemetry
+    restoredWs.terminals.forEach((term) => {
+      handleLogSessionStart({
+        id: term.id,
+        workspaceId: restoredWs.id,
+        workspaceName: restoredWs.name,
+        title: term.title,
+        appType: term.appType,
+        shellOrCommand: term.shellOrCommand,
+        cwd: term.cwd,
+        startedAt: term.startedAt!,
+        status: "running",
+        outputChunksCount: 0,
+      });
+    });
+
+    setWorkspaces((prev) => [...prev, restoredWs]);
+    setActiveWorkspaceId(restoredWs.id);
+    setClosedWorkspaces((prev) => prev.filter((w) => w.id !== closedWs.id));
+    setActiveNav("workspace");
+  };
+
+  // Resume an individual session into active workspace
+  const handleResumeSession = (session: HistoricalSession) => {
+    let targetWs = workspaces.find((w) => w.id === activeWorkspaceId);
+    if (!targetWs && workspaces.length > 0) {
+      targetWs = workspaces[0];
+    }
+
+    const newTermId = `term_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newTerm: TerminalData = {
+      id: newTermId,
+      title: session.title,
+      appType: session.appType,
+      shellOrCommand: session.shellOrCommand,
+      cwd: session.cwd,
+      status: "running",
+      startedAt: Date.now(),
+      outputChunksCount: 0,
+    };
+
+    if (targetWs) {
+      handleUpdateWorkspaceById(targetWs.id, (prev) => ({
+        ...prev,
+        terminals: [...prev.terminals, newTerm],
+        focusedId: newTerm.id,
+      }));
+      setActiveWorkspaceId(targetWs.id);
+    } else {
+      const newWs: WorkspaceData = {
+        id: `ws_${Date.now()}`,
+        name: "Workspace 1",
+        terminals: [newTerm],
+        gridLayout: settings.defaultLayout || "side-by-side",
+        focusedId: newTerm.id,
+        maximizedId: null,
+        createdAt: Date.now(),
+      };
+      setWorkspaces([newWs]);
+      setActiveWorkspaceId(newWs.id);
+    }
+
+    handleLogSessionStart({
+      id: newTerm.id,
+      workspaceId: targetWs ? targetWs.id : `ws_${Date.now()}`,
+      workspaceName: targetWs ? targetWs.name : "Workspace 1",
+      title: newTerm.title,
+      appType: newTerm.appType,
+      shellOrCommand: newTerm.shellOrCommand,
+      cwd: newTerm.cwd,
+      startedAt: newTerm.startedAt!,
+      status: "running",
+      outputChunksCount: 0,
+    });
+
+    setActiveNav("workspace");
+  };
+
+  // Launch terminal from Instant Launchpad on Home
+  const handleLaunchTerminalFromHome = (config: Omit<TerminalData, "id" | "status">) => {
+    let targetWs = workspaces.find((w) => w.id === activeWorkspaceId);
+    if (!targetWs && workspaces.length > 0) {
+      targetWs = workspaces[0];
+    }
+
+    const newTermId = `term_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newTerm: TerminalData = {
+      ...config,
+      id: newTermId,
+      status: "running",
+      startedAt: Date.now(),
+      outputChunksCount: 0,
+    };
+
+    if (targetWs) {
+      handleUpdateWorkspaceById(targetWs.id, (prev) => ({
+        ...prev,
+        terminals: [...prev.terminals, newTerm],
+        focusedId: newTerm.id,
+      }));
+      setActiveWorkspaceId(targetWs.id);
+    } else {
+      const newWs: WorkspaceData = {
+        id: `ws_${Date.now()}`,
+        name: "Workspace 1",
+        terminals: [newTerm],
+        gridLayout: settings.defaultLayout || "side-by-side",
+        focusedId: newTerm.id,
+        maximizedId: null,
+        createdAt: Date.now(),
+      };
+      setWorkspaces([newWs]);
+      setActiveWorkspaceId(newWs.id);
+    }
+
+    handleLogSessionStart({
+      id: newTerm.id,
+      workspaceId: targetWs ? targetWs.id : `ws_${Date.now()}`,
+      workspaceName: targetWs ? targetWs.name : "Workspace 1",
+      title: newTerm.title,
+      appType: newTerm.appType,
+      shellOrCommand: newTerm.shellOrCommand,
+      cwd: newTerm.cwd,
+      startedAt: newTerm.startedAt!,
+      status: "running",
+      outputChunksCount: 0,
+    });
+
+    setActiveNav("workspace");
+  };
+
+  // Delete a closed workspace entry
+  const handleDeleteClosedWorkspace = (id: string) => {
+    setClosedWorkspaces((prev) => prev.filter((w) => w.id !== id));
+  };
+
+  // Clear all closed workspace entries
+  const handleClearClosedWorkspaces = () => {
+    setClosedWorkspaces([]);
   };
 
   // Start inline rename
@@ -236,6 +494,95 @@ export default function App() {
         return { ...w, ...updater };
       })
     );
+  };
+
+  // Move a terminal from one workspace to another (or to a newly created workspace)
+  const handleMoveTerminal = (
+    terminalId: string,
+    sourceWsId: string,
+    targetWsId: string | "new",
+    switchNow: boolean = false
+  ) => {
+    const sourceWs = workspaces.find((w) => w.id === sourceWsId);
+    if (!sourceWs) return;
+    const terminalToMove = sourceWs.terminals.find((t) => t.id === terminalId);
+    if (!terminalToMove) return;
+
+    let destinationWsId = targetWsId;
+
+    if (targetWsId === "new") {
+      const newIndex = workspaces.length + 1;
+      const newWsId = `ws_${Date.now()}`;
+      destinationWsId = newWsId;
+
+      const newWs: WorkspaceData = {
+        id: newWsId,
+        name: `Workspace ${newIndex}`,
+        terminals: [terminalToMove],
+        gridLayout: settings.defaultLayout || "side-by-side",
+        focusedId: terminalToMove.id,
+        maximizedId: null,
+        createdAt: Date.now(),
+      };
+
+      setWorkspaces((prev) => [
+        ...prev.map((w) => {
+          if (w.id === sourceWsId) {
+            const remaining = w.terminals.filter((t) => t.id !== terminalId);
+            return {
+              ...w,
+              terminals: remaining,
+              focusedId: w.focusedId === terminalId ? (remaining[0]?.id || null) : w.focusedId,
+              maximizedId: w.maximizedId === terminalId ? null : w.maximizedId,
+            };
+          }
+          return w;
+        }),
+        newWs,
+      ]);
+    } else {
+      setWorkspaces((prev) =>
+        prev.map((w) => {
+          if (w.id === sourceWsId) {
+            const remaining = w.terminals.filter((t) => t.id !== terminalId);
+            return {
+              ...w,
+              terminals: remaining,
+              focusedId: w.focusedId === terminalId ? (remaining[0]?.id || null) : w.focusedId,
+              maximizedId: w.maximizedId === terminalId ? null : w.maximizedId,
+            };
+          }
+          if (w.id === destinationWsId) {
+            return {
+              ...w,
+              terminals: [...w.terminals, terminalToMove],
+              focusedId: terminalToMove.id,
+            };
+          }
+          return w;
+        })
+      );
+    }
+
+    // Synchronize telemetry records
+    setSessionHistory((prev) =>
+      prev.map((s) => {
+        if (s.id === terminalId) {
+          const targetWs = workspaces.find((w) => w.id === destinationWsId);
+          return {
+            ...s,
+            workspaceId: destinationWsId,
+            workspaceName: targetWs?.name || (targetWsId === "new" ? `Workspace ${workspaces.length + 1}` : s.workspaceName),
+          };
+        }
+        return s;
+      })
+    );
+
+    if (switchNow) {
+      setActiveWorkspaceId(destinationWsId);
+      setActiveNav("workspace");
+    }
   };
 
   // Update settings
@@ -282,6 +629,14 @@ export default function App() {
     }));
   };
 
+  // Save pinned quick presets into settings
+  const handleUpdatePinnedPresets = (pinned: AppSettings["pinnedQuickPresets"]) => {
+    setSettings((prev) => ({
+      ...prev,
+      pinnedQuickPresets: pinned,
+    }));
+  };
+
   const handleClearHistory = () => {
     const activeIds = new Set<string>();
     workspaces.forEach((w) => w.terminals.forEach((t) => activeIds.add(t.id)));
@@ -291,11 +646,13 @@ export default function App() {
   // Reset all workspaces and local storage to defaults
   const handleResetToDefaults = () => {
     localStorage.removeItem(STORAGE_KEYS.WORKSPACES);
+    localStorage.removeItem(STORAGE_KEYS.CLOSED_WORKSPACES);
     localStorage.removeItem(STORAGE_KEYS.TELEMETRY);
     localStorage.removeItem(STORAGE_KEYS.ACTIVE_WS);
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     setSettings(DEFAULT_APP_SETTINGS);
     setWorkspaces(INITIAL_WORKSPACES);
+    setClosedWorkspaces([]);
     setActiveWorkspaceId("ws_default");
     setSessionHistory([]);
   };
@@ -392,7 +749,7 @@ export default function App() {
                           />
                         </div>
 
-                        <Folder size={15} className={isActive ? "text-indigo-400" : "text-slate-400"} />
+                        <Folder size={15} className={isActive ? "text-sage" : "text-slate-400"} />
 
                         {isEditing ? (
                           <input
@@ -494,16 +851,48 @@ export default function App() {
         {/* Main Content Area */}
         <main className="app-main">
           <div className={`page-view-layer ${activeNav === "home" ? "active" : ""}`}>
-            {activeNav === "home" && <HomePage />}
+            {activeNav === "home" && (
+              <HomePage
+                workspaces={workspaces}
+                closedWorkspaces={closedWorkspaces}
+                sessionHistory={sessionHistory}
+                onNavigateToWorkspace={(wsId) => {
+                  setActiveWorkspaceId(wsId);
+                  setActiveNav("workspace");
+                }}
+                onNewWorkspace={handleAddWorkspace}
+                onLaunchTerminal={handleLaunchTerminalFromHome}
+                onOpenCustomLaunchModal={(wsId) => {
+                  setHomeLaunchModalWsId(wsId || activeWorkspaceId);
+                }}
+                onReopenWorkspace={handleReopenWorkspace}
+                onResumeSession={handleResumeSession}
+                onDeleteClosedWorkspace={handleDeleteClosedWorkspace}
+                onClearClosedWorkspaces={handleClearClosedWorkspaces}
+                onClearSessionHistory={handleClearHistory}
+                directoryTemplates={settings.directoryTemplates || []}
+                defaultCwd={settings.defaultCwd || ""}
+                visibleAgents={settings.visibleAgents}
+                detectedAgents={settings.detectedAgents}
+                onOpenSettings={() => setActiveNav("settings")}
+              />
+            )}
           </div>
 
-          {/* Workspaces: Maintained with persistent absolute geometry to prevent canvas resize flash */}
+          {/* Workspaces: Maintained with display toggles so running PTY sessions stay alive when switching between workspaces */}
           {workspaces.map((ws) => {
             const isVisible = activeNav === "workspace" && ws.id === activeWorkspaceId;
             return (
               <div
                 key={ws.id}
                 className={`workspace-view-layer ${isVisible ? "active" : ""}`}
+                style={{
+                  display: isVisible ? "flex" : "none",
+                  width: "100%",
+                  height: "100%",
+                  flexDirection: "column",
+                  flex: 1,
+                }}
               >
                 <WorkspacePage
                   workspace={ws}
@@ -514,6 +903,17 @@ export default function App() {
                   directoryTemplates={settings.directoryTemplates || []}
                   defaultCwd={settings.defaultCwd || ""}
                   onSaveDirectoryTemplate={handleSaveDirectoryTemplate}
+                  pinnedPresets={settings.pinnedQuickPresets || DEFAULT_APP_SETTINGS.pinnedQuickPresets}
+                  onUpdatePinnedPresets={handleUpdatePinnedPresets}
+                  availableWorkspaces={workspaces.map((w) => ({
+                    id: w.id,
+                    name: w.name,
+                    terminalCount: w.terminals.length,
+                  }))}
+                  onMoveTerminal={handleMoveTerminal}
+                  visibleAgents={settings.visibleAgents}
+                  detectedAgents={settings.detectedAgents}
+                  onOpenSettings={() => setActiveNav("settings")}
                 />
               </div>
             );
@@ -549,6 +949,29 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {/* Global Launch Modal for Home Custom Process Launcher */}
+      <LaunchAppModal
+        isOpen={homeLaunchModalWsId !== null}
+        onClose={() => setHomeLaunchModalWsId(null)}
+        directoryTemplates={settings.directoryTemplates || []}
+        defaultCwd={settings.defaultCwd || ""}
+        onSaveTemplate={handleSaveDirectoryTemplate}
+        visibleAgents={settings.visibleAgents}
+        detectedAgents={settings.detectedAgents}
+        onOpenSettings={() => {
+          setHomeLaunchModalWsId(null);
+          setActiveNav("settings");
+        }}
+        onLaunch={(config) => {
+          if (homeLaunchModalWsId) {
+            setActiveWorkspaceId(homeLaunchModalWsId);
+          }
+          handleLaunchTerminalFromHome(config);
+          setHomeLaunchModalWsId(null);
+        }}
+      />
     </div>
   );
 }
+

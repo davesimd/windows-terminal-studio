@@ -1,9 +1,27 @@
+export type AppType = 
+  | "powershell" 
+  | "cmd" 
+  | "wsl" 
+  | "gitbash"
+  | "antigravity" 
+  | "gemini" 
+  | "claude" 
+  | "codex"
+  | "grok"
+  | "opencode"
+  | "copilot"
+  | "kilo" 
+  | "ollama"
+  | "node"
+  | "python"
+  | "custom";
+
 export interface HistoricalSession {
   id: string;
   workspaceId: string;
   workspaceName: string;
   title: string;
-  appType: "powershell" | "cmd" | "wsl" | "antigravity" | "gemini" | "claude" | "kilo" | "custom";
+  appType: AppType;
   shellOrCommand: string;
   cwd?: string;
   pid?: number;
@@ -15,7 +33,7 @@ export interface HistoricalSession {
 }
 
 export interface ToolUsageStat {
-  appType: "powershell" | "cmd" | "wsl" | "antigravity" | "gemini" | "claude" | "kilo" | "custom";
+  appType: AppType;
   title: string;
   count: number;
   totalDurationSeconds: number;

@@ -1,8 +1,11 @@
+pub mod detector;
 pub mod terminal;
 
+use detector::detect_installed_tools;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use terminal::{kill_terminal, list_terminals, resize_terminal, spawn_terminal, write_terminal, TerminalManager};
+use terminal::{kill_all_terminals, kill_terminal, list_terminals, resize_terminal, spawn_terminal, terminate_session, write_terminal, TerminalManager};
+use tauri::Manager;
 
 #[derive(Serialize, Deserialize)]
 pub struct SystemStats {
@@ -54,19 +57,33 @@ fn run_benchmark(iterations: u32) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(TerminalManager::default())
         .invoke_handler(tauri::generate_handler![
             greet,
             get_system_stats,
             run_benchmark,
+            detect_installed_tools,
             spawn_terminal,
             write_terminal,
             resize_terminal,
             kill_terminal,
+            kill_all_terminals,
             list_terminals
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+            if let Some(state) = app_handle.try_state::<TerminalManager>() {
+                if let Ok(mut sessions) = state.sessions.lock() {
+                    for (_, session) in sessions.drain() {
+                        terminate_session(session);
+                    }
+                }
+            }
+        }
+    });
 }

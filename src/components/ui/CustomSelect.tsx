@@ -106,7 +106,7 @@ export default function CustomSelect({
                   </div>
                 </div>
 
-                {isSelected && <Check size={14} className="option-check text-indigo-400" />}
+                {isSelected && <Check size={14} className="option-check text-sage" />}
               </div>
             );
           })}

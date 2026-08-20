@@ -13,3 +13,21 @@ export interface WorkspaceData {
   maximizedId: string | null;
   createdAt: number;
 }
+
+export interface ClosedWorkspaceData {
+  id: string;
+  name: string;
+  defaultCwd?: string;
+  terminals: TerminalData[];
+  gridLayout: GridLayoutMode;
+  createdAt: number;
+  closedAt: number;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  terminalCount: number;
+}
+
+

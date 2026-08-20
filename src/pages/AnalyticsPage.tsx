@@ -12,7 +12,12 @@ import {
   Trash2, 
   Search, 
   Cpu, 
-  Layers
+  Layers,
+  BrainCircuit,
+  Rocket,
+  Boxes,
+  Server,
+  Code2
 } from "lucide-react";
 import { WorkspaceData } from "../types/workspace";
 import { HistoricalSession, ToolUsageStat } from "../types/analytics";
@@ -76,37 +81,28 @@ export default function AnalyticsPage({
           cwd: term.cwd,
           pid: term.pid,
           startedAt: started,
-          status: term.status || "running",
-          outputChunksCount: term.outputChunksCount || 0,
           durationSeconds: dur,
+          status: "running",
+          outputChunksCount: term.outputChunksCount || 0,
         });
       });
     });
 
-    // History sessions not currently in active
-    const historical = sessionHistory
-      .filter((h) => !activeMap.has(h.id))
-      .map((h) => {
-        const ended = h.endedAt || now;
-        const dur = Math.max(0, (ended - h.startedAt) / 1000);
-        return {
-          ...h,
-          durationSeconds: h.durationSeconds !== undefined ? h.durationSeconds : dur,
-        };
-      });
+    // Exited historical sessions
+    const inactive = sessionHistory.filter((s) => !activeMap.has(s.id));
 
-    return [...currentActive, ...historical].sort((a, b) => b.startedAt - a.startedAt);
+    return [...currentActive, ...inactive].sort((a, b) => b.startedAt - a.startedAt);
   }, [workspaces, sessionHistory, now]);
 
-  // Aggregate high-level KPIs
-  const totalActiveTerminals = workspaces.reduce((sum, w) => sum + w.terminals.length, 0);
+  // Aggregate KPI Metrics
+  const totalActiveTerminals = workspaces.reduce((acc, ws) => acc + ws.terminals.length, 0);
   const totalSpawnedCount = allSessions.length;
   const totalCombinedRuntimeSeconds = allSessions.reduce(
-    (sum, s) => sum + (s.durationSeconds || 0),
+    (acc, s) => acc + (s.durationSeconds || 0),
     0
   );
   const totalOutputChunks = allSessions.reduce(
-    (sum, s) => sum + (s.outputChunksCount || 0),
+    (acc, s) => acc + (s.outputChunksCount || 0),
     0
   );
   const activeWorkspacesCount = workspaces.filter((w) => w.terminals.length > 0).length;
@@ -218,16 +214,38 @@ export default function AnalyticsPage({
 
   const getToolIcon = (appType: string) => {
     switch (appType) {
-      case "antigravity":
-        return <Zap size={14} className="text-cyan-400" />;
-      case "gemini":
-        return <Sparkles size={14} className="text-blue-400" />;
+      case "codex":
+        return <BrainCircuit size={14} className="text-emerald-400" />;
+      case "grok":
+        return <Rocket size={14} className="text-rose-400" />;
       case "claude":
         return <Bot size={14} className="text-orange-400" />;
+      case "antigravity":
+        return <Sparkles size={14} className="text-sage-light" />;
+      case "opencode":
+        return <Boxes size={14} className="text-cyan-400" />;
+      case "gemini":
+        return <Sparkles size={14} className="text-blue-400" />;
+      case "copilot":
+        return <Bot size={14} className="text-sky-400" />;
       case "kilo":
         return <Zap size={14} className="text-yellow-400" />;
+      case "ollama":
+        return <Server size={14} className="text-teal-400" />;
+      case "node":
+        return <Code2 size={14} className="text-emerald-400" />;
+      case "python":
+        return <Code2 size={14} className="text-yellow-300" />;
+      case "gitbash":
+        return <TermIcon size={14} className="text-amber-300" />;
+      case "wsl":
+        return <Layers size={14} className="text-sage" />;
+      case "cmd":
+        return <TermIcon size={14} className="text-slate-300" />;
+      case "custom":
+        return <Code2 size={14} className="text-purple-400" />;
       default:
-        return <TermIcon size={14} className="text-indigo-400" />;
+        return <TermIcon size={14} className="text-sage" />;
     }
   };
 
@@ -316,7 +334,7 @@ export default function AnalyticsPage({
         <div className="analytics-card">
           <div className="card-header">
             <div className="card-header-left">
-              <Cpu size={16} className="text-indigo-400" />
+              <Cpu size={16} className="text-sage" />
               <h3>Application & Shell Distribution</h3>
             </div>
             <span className="card-tag">{toolStats.length} tools used</span>
@@ -431,13 +449,20 @@ export default function AnalyticsPage({
               onChange={(e) => setFilterTool(e.target.value)}
             >
               <option value="all">All Tools</option>
-              <option value="antigravity">Antigravity CLI</option>
-              <option value="powershell">PowerShell</option>
-              <option value="kilo">Kilo CLI</option>
-              <option value="gemini">Gemini CLI</option>
+              <option value="codex">OpenAI Codex</option>
+              <option value="grok">xAI Grok Build</option>
               <option value="claude">Claude Code</option>
+              <option value="antigravity">Antigravity CLI</option>
+              <option value="opencode">OpenCode CLI</option>
+              <option value="gemini">Gemini CLI</option>
+              <option value="copilot">GitHub Copilot CLI</option>
+              <option value="kilo">Kilo CLI</option>
+              <option value="ollama">Ollama CLI</option>
+              <option value="powershell">PowerShell</option>
               <option value="cmd">CMD</option>
               <option value="wsl">WSL</option>
+              <option value="gitbash">Git Bash</option>
+              <option value="custom">Custom / Other</option>
             </select>
 
             {/* Status Filter */}

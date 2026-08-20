@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   X, 
   Terminal, 
@@ -13,7 +13,12 @@ import {
   BookmarkPlus, 
   Compass, 
   RotateCcw, 
-  CheckCircle2
+  CheckCircle2,
+  BrainCircuit,
+  Rocket,
+  Boxes,
+  Server,
+  Search
 } from "lucide-react";
 import { TerminalData } from "./TerminalSession";
 import { DirectoryTemplate } from "../../types/settings";
@@ -25,6 +30,9 @@ interface LaunchAppModalProps {
   directoryTemplates?: DirectoryTemplate[];
   defaultCwd?: string;
   onSaveTemplate?: (name: string, path: string) => void;
+  visibleAgents?: Record<string, boolean>;
+  detectedAgents?: Record<string, boolean>;
+  onOpenSettings?: () => void;
 }
 
 interface Preset {
@@ -41,22 +49,43 @@ interface Preset {
 const CATEGORIES = [
   {
     id: "ai" as const,
-    title: "AI Developer Agents",
-    icon: <Sparkles size={14} className="text-cyan-400" />,
+    title: "AI Developer Agents & Harnesses",
+    icon: <Sparkles size={14} className="text-sage-light" />,
   },
   {
     id: "shell" as const,
     title: "System Shells & Environments",
-    icon: <Terminal size={14} className="text-indigo-400" />,
+    icon: <Terminal size={14} className="text-sage" />,
   },
   {
     id: "dev" as const,
     title: "Developer Tools & Custom",
-    icon: <Layers size={14} className="text-emerald-400" />,
+    icon: <Layers size={14} className="text-sage" />,
   },
 ];
 
 const PRESETS: Preset[] = [
+  // --- AI Developer Agents & CLI Harnesses ---
+  {
+    id: "codex",
+    title: "OpenAI Codex",
+    category: "ai",
+    appType: "codex",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "codex"],
+    description: "OpenAI Codex agentic terminal assistant & sandbox",
+    icon: <BrainCircuit size={18} className="text-emerald-400" />,
+  },
+  {
+    id: "grok",
+    title: "xAI Grok Build",
+    category: "ai",
+    appType: "grok",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "grok"],
+    description: "xAI Grok interactive builder with parallel subagents",
+    icon: <Rocket size={18} className="text-rose-400" />,
+  },
   {
     id: "claude",
     title: "Claude Code",
@@ -75,7 +104,37 @@ const PRESETS: Preset[] = [
     shellOrCommand: "powershell.exe",
     args: ["-NoExit", "-Command", "agy"],
     description: "Google Antigravity (agy) interactive AI coding agent",
-    icon: <Sparkles size={18} className="text-cyan-400" />,
+    icon: <Sparkles size={18} className="text-sage-light" />,
+  },
+  {
+    id: "opencode",
+    title: "OpenCode CLI",
+    category: "ai",
+    appType: "opencode",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "opencode"],
+    description: "Open-source model-agnostic terminal AI agent (75+ LLMs)",
+    icon: <Boxes size={18} className="text-cyan-400" />,
+  },
+  {
+    id: "gemini",
+    title: "Gemini CLI",
+    category: "ai",
+    appType: "gemini",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "gemini"],
+    description: "Google Gemini Code Assist shell terminal interface",
+    icon: <Sparkles size={18} className="text-blue-400" />,
+  },
+  {
+    id: "copilot",
+    title: "GitHub Copilot CLI",
+    category: "ai",
+    appType: "copilot",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "gh copilot suggest"],
+    description: "GitHub Copilot CLI shell command assistance",
+    icon: <Bot size={18} className="text-sky-400" />,
   },
   {
     id: "kilo",
@@ -88,6 +147,18 @@ const PRESETS: Preset[] = [
     icon: <Zap size={18} className="text-yellow-400" />,
   },
   {
+    id: "ollama",
+    title: "Ollama CLI",
+    category: "ai",
+    appType: "ollama",
+    shellOrCommand: "powershell.exe",
+    args: ["-NoExit", "-Command", "ollama run llama3"],
+    description: "Run local models (Llama 3, DeepSeek, Qwen) in shell",
+    icon: <Server size={18} className="text-teal-400" />,
+  },
+
+  // --- System Shells & Environments ---
+  {
     id: "powershell",
     title: "PowerShell",
     category: "shell",
@@ -95,7 +166,7 @@ const PRESETS: Preset[] = [
     shellOrCommand: "powershell.exe",
     args: ["-NoLogo"],
     description: "Native Windows PowerShell environment",
-    icon: <Terminal size={18} className="text-indigo-400" />,
+    icon: <Terminal size={18} className="text-sage" />,
   },
   {
     id: "cmd",
@@ -113,8 +184,19 @@ const PRESETS: Preset[] = [
     appType: "wsl",
     shellOrCommand: "wsl.exe",
     description: "Windows Subsystem for Linux (Bash / Ubuntu)",
-    icon: <Layers size={18} className="text-emerald-400" />,
+    icon: <Layers size={18} className="text-sage" />,
   },
+  {
+    id: "gitbash",
+    title: "Git Bash",
+    category: "shell",
+    appType: "gitbash",
+    shellOrCommand: "bash.exe",
+    description: "Git for Windows Bash terminal environment",
+    icon: <Terminal size={18} className="text-amber-300" />,
+  },
+
+  // --- Developer Tools & Interpreters ---
   {
     id: "node",
     title: "Node.js REPL",
@@ -131,7 +213,7 @@ const PRESETS: Preset[] = [
     appType: "custom",
     shellOrCommand: "python",
     description: "Interactive Python interpreter",
-    icon: <Code2 size={18} className="text-sky-400" />,
+    icon: <Code2 size={18} className="text-sage-muted" />,
   },
 ];
 
@@ -142,8 +224,12 @@ export default function LaunchAppModal({
   directoryTemplates = [],
   defaultCwd = "",
   onSaveTemplate,
+  visibleAgents,
+  detectedAgents,
+  onOpenSettings,
 }: LaunchAppModalProps) {
   const [selectedPreset, setSelectedPreset] = useState<Preset>(PRESETS[0]);
+  const [searchFilter, setSearchFilter] = useState("");
   const [customTitle, setCustomTitle] = useState("");
   const [customCommand, setCustomCommand] = useState("");
   const [customCwd, setCustomCwd] = useState(defaultCwd);
@@ -151,6 +237,7 @@ export default function LaunchAppModal({
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [showHiddenAgents, setShowHiddenAgents] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -158,8 +245,47 @@ export default function LaunchAppModal({
       setIsSavingTemplate(false);
       setTemplateName("");
       setSavedFeedback(null);
+      setSearchFilter("");
+      setShowHiddenAgents(false);
     }
   }, [isOpen, defaultCwd]);
+
+  // Close on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  const hiddenCount = useMemo(() => {
+    if (!visibleAgents) return 0;
+    return PRESETS.filter((p) => visibleAgents[p.id] === false).length;
+  }, [visibleAgents]);
+
+  const filteredPresets = useMemo(() => {
+    const q = searchFilter.trim().toLowerCase();
+    let base = PRESETS;
+
+    // Filter by visibility if not searching and not showing hidden
+    if (!q && !showHiddenAgents && visibleAgents) {
+      base = base.filter((p) => visibleAgents[p.id] !== false);
+    }
+
+    if (!q) return base;
+    return PRESETS.filter((p) =>
+      p.title.toLowerCase().includes(q) ||
+      p.description.toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q)
+    );
+  }, [searchFilter, showHiddenAgents, visibleAgents]);
 
   if (!isOpen) return null;
 
@@ -203,8 +329,13 @@ export default function LaunchAppModal({
       <div className="modal-content animate-fade" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title-wrap">
-            <Terminal size={18} className="text-indigo-400" />
-            <h3>Launch Terminal or Application</h3>
+            <Terminal size={18} className="text-sage" />
+            <div>
+              <h3>Launch Terminal or AI Agent</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Spawns a fast native PTY process with live streaming terminal I/O
+              </p>
+            </div>
           </div>
           <button className="modal-close-btn" onClick={onClose}>
             <X size={16} />
@@ -212,59 +343,116 @@ export default function LaunchAppModal({
         </div>
 
         <div className="modal-body">
-          {/* Categorized Presets */}
-          {CATEGORIES.map((cat) => (
-            <div key={cat.id} className="preset-category-section">
-              <div className="preset-category-header">
-                <span className="preset-category-icon">{cat.icon}</span>
-                <span className="preset-category-title">{cat.title}</span>
-              </div>
+          {/* Preset Search Filter & Controls */}
+          <div className="modal-preset-search-row">
+            <div className="modal-preset-search">
+              <Search size={14} className="text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search AI harnesses, shells, tools (Codex, Grok, Claude, Aider, OpenCode...)"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                className="modal-search-input"
+              />
+              {searchFilter && (
+                <button className="btn-input-clear" onClick={() => setSearchFilter("")}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
 
-              <div className="preset-grid">
-                {PRESETS.filter((p) => p.category === cat.id).map((preset) => {
-                  const isSelected = !isCustomMode && selectedPreset.id === preset.id;
-                  return (
+            {hiddenCount > 0 && !searchFilter && (
+              <button
+                type="button"
+                className={`btn-toggle-hidden-agents ${showHiddenAgents ? "active" : ""}`}
+                onClick={() => setShowHiddenAgents(!showHiddenAgents)}
+              >
+                <span>{showHiddenAgents ? "Hide unselected" : `Show all (${hiddenCount} hidden)`}</span>
+              </button>
+            )}
+
+            {onOpenSettings && (
+              <button
+                type="button"
+                className="btn-modal-settings-link"
+                onClick={onOpenSettings}
+                title="Configure installed agents & visibility in Settings"
+              >
+                <span>Settings</span>
+              </button>
+            )}
+          </div>
+
+          {/* Categorized Presets */}
+          {CATEGORIES.map((cat) => {
+            const items = filteredPresets.filter((p) => p.category === cat.id);
+            if (items.length === 0 && (cat.id !== "dev" || searchFilter.trim() !== "")) {
+              return null;
+            }
+
+            return (
+              <div key={cat.id} className="preset-category-section">
+                <div className="preset-category-header">
+                  <span className="preset-category-icon">{cat.icon}</span>
+                  <span className="preset-category-title">{cat.title}</span>
+                  <span className="preset-category-count">({items.length})</span>
+                </div>
+
+                <div className="preset-grid">
+                  {items.map((preset) => {
+                    const isSelected = !isCustomMode && selectedPreset.id === preset.id;
+                    const isInstalled = !!detectedAgents?.[preset.id];
+
+                    return (
+                      <div
+                        key={preset.id}
+                        className={`preset-card ${isSelected ? "selected" : ""}`}
+                        onClick={() => {
+                          setSelectedPreset(preset);
+                          setIsCustomMode(false);
+                        }}
+                      >
+                        <div className="preset-card-icon">{preset.icon}</div>
+                        <div className="preset-card-info">
+                          <div className="preset-card-title">
+                            <div className="flex items-center gap-1.5 overflow-hidden">
+                              <span className="truncate">{preset.title}</span>
+                              {isInstalled && (
+                                <span className="installed-dot-badge" title="Installed on PATH">
+                                  <CheckCircle2 size={10} className="text-emerald-400" />
+                                </span>
+                              )}
+                            </div>
+                            {isSelected && <Check size={14} className="text-sage flex-shrink-0" />}
+                          </div>
+                          <span className="preset-card-desc">{preset.description}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Custom Command Card under Developer Tools */}
+                  {cat.id === "dev" && !searchFilter && (
                     <div
-                      key={preset.id}
-                      className={`preset-card ${isSelected ? "selected" : ""}`}
-                      onClick={() => {
-                        setSelectedPreset(preset);
-                        setIsCustomMode(false);
-                      }}
+                      className={`preset-card ${isCustomMode ? "selected" : ""}`}
+                      onClick={() => setIsCustomMode(true)}
                     >
-                      <div className="preset-card-icon">{preset.icon}</div>
+                      <div className="preset-card-icon">
+                        <Code2 size={18} className="text-purple-400" />
+                      </div>
                       <div className="preset-card-info">
                         <div className="preset-card-title">
-                          <span>{preset.title}</span>
-                          {isSelected && <Check size={14} className="text-indigo-400" />}
+                          <span>Custom App / Command</span>
+                          {isCustomMode && <Check size={14} className="text-sage" />}
                         </div>
-                        <span className="preset-card-desc">{preset.description}</span>
+                        <span className="preset-card-desc">Run any CLI script or executable</span>
                       </div>
                     </div>
-                  );
-                })}
-
-                {/* Custom Command Card under Developer Tools */}
-                {cat.id === "dev" && (
-                  <div
-                    className={`preset-card ${isCustomMode ? "selected" : ""}`}
-                    onClick={() => setIsCustomMode(true)}
-                  >
-                    <div className="preset-card-icon">
-                      <Code2 size={18} className="text-purple-400" />
-                    </div>
-                    <div className="preset-card-info">
-                      <div className="preset-card-title">
-                        <span>Custom App / Command</span>
-                        {isCustomMode && <Check size={14} className="text-indigo-400" />}
-                      </div>
-                      <span className="preset-card-desc">Run any CLI script or executable</span>
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Configuration Fields */}
           <div className="modal-form-section">
@@ -348,7 +536,7 @@ export default function LaunchAppModal({
             {isSavingTemplate && (
               <div className="save-template-card animate-fade">
                 <div className="save-template-header">
-                  <BookmarkPlus size={13} className="text-indigo-400" />
+                  <BookmarkPlus size={13} className="text-sage" />
                   <span className="text-xs font-medium text-slate-200">Save Directory Template</span>
                 </div>
                 <div className="save-template-inputs">
@@ -397,9 +585,9 @@ export default function LaunchAppModal({
                         onClick={() => setCustomCwd(tmpl.path)}
                         title={tmpl.path || "Default User Home (~)"}
                       >
-                        <Folder size={12} className={isCurrent ? "text-indigo-400" : "text-slate-400"} />
+                        <Folder size={12} className={isCurrent ? "text-sage" : "text-slate-400"} />
                         <span>{tmpl.name}</span>
-                        {isCurrent && <Check size={11} className="text-indigo-400" />}
+                        {isCurrent && <Check size={11} className="text-sage" />}
                       </button>
                     );
                   })}

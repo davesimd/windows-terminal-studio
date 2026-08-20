@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { 
   Plus, 
   Columns3, 
@@ -6,13 +7,13 @@ import {
   Square, 
   Radio, 
   Trash2, 
-  Zap, 
-  Sparkles, 
-  Bot, 
-  Terminal,
-  RotateCcw
+  RotateCcw, 
+  SlidersHorizontal
 } from "lucide-react";
 import { TerminalData } from "./TerminalSession";
+import { AppType } from "../../types/analytics";
+import { ALL_PRESET_DEFINITIONS } from "../../constants/presets";
+import { DEFAULT_PINNED_PRESETS } from "../../types/settings";
 
 export type GridLayoutMode = "side-by-side" | "stacked" | "grid" | "focus";
 
@@ -26,6 +27,9 @@ interface TerminalToolbarProps {
   onKillAll: () => void;
   onResetPaneSizes?: () => void;
   isCustomSizes?: boolean;
+  pinnedPresets?: AppType[];
+  onOpenCustomizePresets?: () => void;
+  visibleAgents?: Record<string, boolean>;
 }
 
 export default function TerminalToolbar({
@@ -38,53 +42,54 @@ export default function TerminalToolbar({
   onKillAll,
   onResetPaneSizes,
   isCustomSizes,
+  pinnedPresets = DEFAULT_PINNED_PRESETS,
+  onOpenCustomizePresets,
+  visibleAgents,
 }: TerminalToolbarProps) {
+  // Active preset definitions derived from pinned IDs (filtered by visibility)
+  const activePresets = useMemo(() => {
+    const activeIds = pinnedPresets && pinnedPresets.length > 0 ? pinnedPresets : DEFAULT_PINNED_PRESETS;
+    return activeIds
+      .filter((id) => (visibleAgents?.[id] ?? true))
+      .map((id) => ALL_PRESET_DEFINITIONS.find((p) => p.id === id))
+      .filter(Boolean) as typeof ALL_PRESET_DEFINITIONS;
+  }, [pinnedPresets, visibleAgents]);
+
   return (
     <div className="terminal-toolbar">
       {/* Left side: Launch Buttons */}
       <div className="toolbar-left">
         <button className="btn-primary" onClick={onOpenLaunchModal}>
           <Plus size={15} />
-          <span>Launch / Add Terminal</span>
+          <span>Launch / Add</span>
         </button>
 
-        {/* Quick Launch Shortcuts */}
+        {/* Dynamic Quick Launch Shortcuts */}
         <div className="quick-presets">
-          <button 
-            className="btn-quick-preset" 
-            title="Quick launch PowerShell"
-            onClick={() => onQuickSpawn("powershell")}
-          >
-            <Terminal size={14} className="text-indigo-400" />
-            <span>PowerShell</span>
-          </button>
+          {activePresets.map((preset) => (
+            <button
+              key={preset.id}
+              className="btn-quick-preset"
+              title={`Quick launch ${preset.title} (${preset.description})`}
+              onClick={() => onQuickSpawn(preset.id as TerminalData["appType"])}
+            >
+              {preset.icon(14)}
+              <span>{preset.shortTitle}</span>
+            </button>
+          ))}
 
-          <button 
-            className="btn-quick-preset" 
-            title="Quick launch Claude Code"
-            onClick={() => onQuickSpawn("claude")}
-          >
-            <Bot size={14} className="text-orange-400" />
-            <span>Claude</span>
-          </button>
-
-          <button 
-            className="btn-quick-preset" 
-            title="Quick launch Google Antigravity CLI (agy)"
-            onClick={() => onQuickSpawn("antigravity")}
-          >
-            <Sparkles size={14} className="text-cyan-400" />
-            <span>Antigravity</span>
-          </button>
-
-          <button 
-            className="btn-quick-preset" 
-            title="Quick launch Kilo CLI"
-            onClick={() => onQuickSpawn("kilo")}
-          >
-            <Zap size={14} className="text-yellow-400" />
-            <span>Kilo</span>
-          </button>
+          {/* Customize / Pin Presets Button */}
+          {onOpenCustomizePresets && (
+            <button
+              type="button"
+              className="btn-customize-presets"
+              title="Customize pinned quick presets in toolbar"
+              onClick={onOpenCustomizePresets}
+            >
+              <SlidersHorizontal size={13} />
+              <span className="btn-customize-label">Pin Presets</span>
+            </button>
+          )}
         </div>
       </div>
 

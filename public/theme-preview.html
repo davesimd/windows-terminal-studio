@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Windows Terminal Studio - Dark Gold & Sage Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #060606;
+      color: #f1f5f9;
+      padding: 40px 24px 60px 24px;
+      min-height: 100vh;
+    }
+    .header {
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto 36px auto;
+    }
+    .header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff 0%, #c5a059 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header p {
+      font-size: 15px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    .section-title {
+      max-width: 1560px;
+      margin: 32px auto 16px auto;
+      font-size: 18px;
+      font-weight: 700;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 28px;
+      max-width: 1560px;
+      margin: 0 auto;
+    }
+    .theme-card {
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .theme-card:hover {
+      transform: translateY(-3px);
+    }
+    .theme-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      width: fit-content;
+    }
+    .theme-title {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .theme-desc {
+      font-size: 13.5px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .swatches-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+    .swatch-box {
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 74px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .swatch-name {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      opacity: 0.85;
+    }
+    .swatch-hex {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .gradient-bar {
+      height: 16px;
+      border-radius: 8px;
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .mock-window {
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    }
+    .mock-header {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .mock-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .mock-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+    .mock-tabs {
+      display: flex;
+      gap: 6px;
+    }
+    .mock-tab {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+    }
+    .mock-body {
+      padding: 16px 14px;
+      min-height: 130px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      line-height: 1.6;
+    }
+    .mock-cursor {
+      display: inline-block;
+      width: 8px;
+      height: 15px;
+      vertical-align: middle;
+      margin-left: 4px;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .mock-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-family: 'Inter', sans-serif;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .btn-preview {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* THEME: DARK BURNISHED GOLD (#C5A059) */
+    .theme-dark-gold {
+      background: #0f1011;
+      border-color: rgba(197, 160, 89, 0.45);
+      box-shadow: 0 25px 50px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(197, 160, 89, 0.25);
+    }
+    .theme-dark-gold .theme-badge {
+      background: rgba(197, 160, 89, 0.2);
+      color: #dfc99c;
+      border: 1px solid rgba(197, 160, 89, 0.45);
+    }
+    .theme-dark-gold .gradient-bar {
+      background: linear-gradient(90deg, #c5a059 0%, #e5cca0 100%);
+      box-shadow: 0 0 15px rgba(197, 160, 89, 0.35);
+    }
+    .theme-dark-gold .mock-window {
+      background: #0a0a0a;
+      border-color: rgba(197, 160, 89, 0.35);
+    }
+    .theme-dark-gold .mock-header {
+      background: #0e0f10;
+    }
+    .theme-dark-gold .mock-tab.active {
+      background: #151617;
+      color: #dfc99c;
+      border: 1px solid rgba(197, 160, 89, 0.45);
+    }
+    .theme-dark-gold .mock-cursor {
+      background: #dfc99c;
+      box-shadow: 0 0 8px #c5a059;
+    }
+    .theme-dark-gold .btn-preview {
+      background: linear-gradient(180deg, #4d3d1f 0%, #362a14 100%);
+      color: #ffffff;
+      border-color: rgba(197, 160, 89, 0.5);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }
+
+    /* THEME: OBSIDIAN SAGE (#7E9183) FOR COMPARISON */
+    .theme-obsidian-sage {
+      background: #0f1011;
+      border-color: rgba(126, 145, 131, 0.45);
+      box-shadow: 0 25px 50px -15px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(126, 145, 131, 0.25);
+    }
+    .theme-obsidian-sage .theme-badge {
+      background: rgba(126, 145, 131, 0.2);
+      color: #9fb4a5;
+      border: 1px solid rgba(126, 145, 131, 0.4);
+    }
+    .theme-obsidian-sage .gradient-bar {
+      background: linear-gradient(90deg, #7e9183 0%, #b3c7b9 100%);
+      box-shadow: 0 0 15px rgba(126, 145, 131, 0.35);
+    }
+    .theme-obsidian-sage .mock-window {
+      background: #0a0a0a;
+      border-color: rgba(126, 145, 131, 0.35);
+    }
+    .theme-obsidian-sage .mock-header {
+      background: #0e0f10;
+    }
+    .theme-obsidian-sage .mock-tab.active {
+      background: #151617;
+      color: #b3c7b9;
+      border: 1px solid rgba(126, 145, 131, 0.4);
+    }
+    .theme-obsidian-sage .mock-cursor {
+      background: #9fb4a5;
+      box-shadow: 0 0 8px #9fb4a5;
+    }
+    .theme-obsidian-sage .btn-preview {
+      background: linear-gradient(180deg, #3d4f42 0%, #2e3d33 100%);
+      color: #ffffff;
+      border-color: rgba(126, 145, 131, 0.5);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Windows Terminal Studio — Dark Gold Preview</h1>
+    <p>Compare the new <strong>Dark Gold (#C5A059)</strong> theme with the <strong>Sage (#7E9183)</strong> theme on the exact same Obsidian background (<code style="color:#fff; background:#181818; padding:2px 6px; border-radius:4px;">#0A0A0A</code>) and darker card surfaces (<code style="color:#fff; background:#181818; padding:2px 6px; border-radius:4px;">#151617</code>).</p>
+  </div>
+
+  <div class="section-title">✨ Direct Visual Comparison (Same Bases, Gold vs Sage)</div>
+
+  <div class="grid">
+
+    <!-- THEME: DARK GOLD -->
+    <div class="theme-card theme-dark-gold">
+      <div class="theme-badge">Option A • Dark Gold / Antique Brass</div>
+      <div class="theme-title">
+        <span>Obsidian Dark Gray & Burnished Gold</span>
+        <span style="font-size: 22px;">⚜️</span>
+      </div>
+      <p class="theme-desc">
+        Ultra-dark gray background (<code>#0A0A0A</code>) and darker cards (<code>#151617</code>) paired with rich <strong>Dark Gold (<code>#C5A059</code>)</strong>, warm champagne mist (<code>#E5CCA0</code>), and deep gold buttons with crisp white text.
+      </p>
+      
+      <div class="swatches-grid">
+        <div class="swatch-box" style="background: #0a0a0a; color: #fff; border-color: rgba(255,255,255,0.2);">
+          <span class="swatch-name">Base Dark</span>
+          <span class="swatch-hex">#0A0A0A</span>
+        </div>
+        <div class="swatch-box" style="background: #151617; color: #fff; border-color: rgba(255,255,255,0.2);">
+          <span class="swatch-name">Dark Card</span>
+          <span class="swatch-hex">#151617</span>
+        </div>
+        <div class="swatch-box" style="background: #c5a059; color: #0a0a0a; font-weight: 800;">
+          <span class="swatch-name">Dark Gold</span>
+          <span class="swatch-hex">#C5A059</span>
+        </div>
+        <div class="swatch-box" style="background: #e5cca0; color: #0a0a0a; font-weight: 800;">
+          <span class="swatch-name">Champagne</span>
+          <span class="swatch-hex">#E5CCA0</span>
+        </div>
+      </div>
+
+      <div class="gradient-bar"></div>
+
+      <div class="mock-window">
+        <div class="mock-header">
+          <div class="mock-dots">
+            <div class="mock-dot" style="background: #e06c75;"></div>
+            <div class="mock-dot" style="background: #c5a059;"></div>
+            <div class="mock-dot" style="background: #98c379;"></div>
+          </div>
+          <div class="mock-tabs">
+            <div class="mock-tab active">powershell-1</div>
+            <div class="mock-tab" style="color: #64748b;">bash-2</div>
+          </div>
+          <button class="btn-preview">+ Split</button>
+        </div>
+        <div class="mock-body">
+          <div style="color: #8c7647;">// Windows Terminal Studio — Dark Gold Theme</div>
+          <div><span style="color: #c5a059;">➜</span> <span style="color: #e5cca0;">~/studio</span> <span style="color: #f1f5f9;">cargo build --release</span><span class="mock-cursor"></span></div>
+          <div style="color: #dfc99c;">✔ Compiling terminal-engine v0.4.2</div>
+          <div style="color: #c5a059;">  Finished in 1.42s [optimized release build]</div>
+        </div>
+        <div class="mock-footer">
+          <span style="color: #64748b;">UTF-8 • Session Active</span>
+          <span style="color: #dfc99c; font-weight: 600;">● Online</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- THEME: SAGE (FOR DIRECT COMPARISON) -->
+    <div class="theme-card theme-obsidian-sage">
+      <div class="theme-badge">Option B • Exact Sage (#7E9183)</div>
+      <div class="theme-title">
+        <span>Obsidian Dark Gray & Exact Sage</span>
+        <span style="font-size: 22px;">🍃</span>
+      </div>
+      <p class="theme-desc">
+        Ultra-dark gray background (<code>#0A0A0A</code>) and darker cards (<code>#151617</code>) paired with exact <strong>Sage (<code>#7E9183</code>)</strong>, soft sage mist (<code>#B3C7B9</code>), and deep forest sage buttons with crisp white text.
+      </p>
+      
+      <div class="swatches-grid">
+        <div class="swatch-box" style="background: #0a0a0a; color: #fff; border-color: rgba(255,255,255,0.2);">
+          <span class="swatch-name">Base Dark</span>
+          <span class="swatch-hex">#0A0A0A</span>
+        </div>
+        <div class="swatch-box" style="background: #151617; color: #fff; border-color: rgba(255,255,255,0.2);">
+          <span class="swatch-name">Dark Card</span>
+          <span class="swatch-hex">#151617</span>
+        </div>
+        <div class="swatch-box" style="background: #7e9183; color: #0a0a0a; font-weight: 800;">
+          <span class="swatch-name">Exact Sage</span>
+          <span class="swatch-hex">#7E9183</span>
+        </div>
+        <div class="swatch-box" style="background: #b3c7b9; color: #0a0a0a; font-weight: 800;">
+          <span class="swatch-name">Sage Mist</span>
+          <span class="swatch-hex">#B3C7B9</span>
+        </div>
+      </div>
+
+      <div class="gradient-bar"></div>
+
+      <div class="mock-window">
+        <div class="mock-header">
+          <div class="mock-dots">
+            <div class="mock-dot" style="background: #e06c75;"></div>
+            <div class="mock-dot" style="background: #e5c07b;"></div>
+            <div class="mock-dot" style="background: #7e9183;"></div>
+          </div>
+          <div class="mock-tabs">
+            <div class="mock-tab active">powershell-1</div>
+            <div class="mock-tab" style="color: #64748b;">bash-2</div>
+          </div>
+          <button class="btn-preview">+ Split</button>
+        </div>
+        <div class="mock-body">
+          <div style="color: #6b7c70;">// Windows Terminal Studio — Obsidian Sage Theme</div>
+          <div><span style="color: #7e9183;">➜</span> <span style="color: #b3c7b9;">~/studio</span> <span style="color: #f1f5f9;">cargo build --release</span><span class="mock-cursor"></span></div>
+          <div style="color: #9fb4a5;">✔ Compiling terminal-engine v0.4.2</div>
+          <div style="color: #7e9183;">  Finished in 1.42s [optimized release build]</div>
+        </div>
+        <div class="mock-footer">
+          <span style="color: #64748b;">UTF-8 • Session Active</span>
+          <span style="color: #9fb4a5; font-weight: 600;">● Online</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
