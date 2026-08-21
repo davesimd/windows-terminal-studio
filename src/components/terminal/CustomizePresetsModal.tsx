@@ -26,14 +26,14 @@ export default function CustomizePresetsModal({
   };
 
   const [selectedIds, setSelectedIds] = useState<AppType[]>(() => {
-    const initial = pinnedPresets && pinnedPresets.length > 0 ? pinnedPresets : DEFAULT_PINNED_PRESETS;
+    const initial = Array.isArray(pinnedPresets) ? pinnedPresets : DEFAULT_PINNED_PRESETS;
     return initial.filter((id) => (visibleAgents ? visibleAgents[id] !== false : true));
   });
 
   // Sync selected IDs when modal opens
   useEffect(() => {
     if (isOpen) {
-      const list = Array.isArray(pinnedPresets) && pinnedPresets.length > 0 ? pinnedPresets : DEFAULT_PINNED_PRESETS;
+      const list = Array.isArray(pinnedPresets) ? pinnedPresets : DEFAULT_PINNED_PRESETS;
       setSelectedIds(list.filter((id) => (visibleAgents ? visibleAgents[id] !== false : true)));
     }
   }, [isOpen, pinnedPresets, visibleAgents]);

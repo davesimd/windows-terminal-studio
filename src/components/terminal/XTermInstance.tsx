@@ -32,6 +32,98 @@ interface ContextMenuState {
   hasSelection: boolean;
 }
 
+const SAGE_TERMINAL_THEME = {
+  background: "#0a0a0a",
+  foreground: "#e2e8f0",
+  cursor: "#9fb4a5",
+  cursorAccent: "#0a0a0a",
+  selectionBackground: "rgba(126, 145, 131, 0.30)",
+  black: "#151617",
+  red: "#f87171",
+  green: "#7e9183",
+  yellow: "#eab308",
+  blue: "#8fa89b",
+  magenta: "#b3c7b9",
+  cyan: "#a3c4bc",
+  white: "#f1f5f9",
+  brightBlack: "#4b5563",
+  brightRed: "#ef4444",
+  brightGreen: "#9fb4a5",
+  brightYellow: "#facc15",
+  brightBlue: "#a8bcad",
+  brightMagenta: "#cbd5e1",
+  brightCyan: "#c4dad2",
+  brightWhite: "#ffffff",
+};
+
+const GOLD_TERMINAL_THEME = {
+  background: "#0a0a0a",
+  foreground: "#e2e8f0",
+  cursor: "#dfc99c",
+  cursorAccent: "#0a0a0a",
+  selectionBackground: "rgba(197, 160, 89, 0.30)",
+  black: "#151617",
+  red: "#f87171",
+  green: "#c5a059",
+  yellow: "#e5cca0",
+  blue: "#d4b373",
+  magenta: "#e5cca0",
+  cyan: "#dcc28f",
+  white: "#f1f5f9",
+  brightBlack: "#4b5563",
+  brightRed: "#ef4444",
+  brightGreen: "#dfc99c",
+  brightYellow: "#facc15",
+  brightBlue: "#edd6aa",
+  brightMagenta: "#f4e4c7",
+  brightCyan: "#faeedb",
+  brightWhite: "#ffffff",
+};
+
+function getActiveTerminalTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  return current === "gold" ? GOLD_TERMINAL_THEME : SAGE_TERMINAL_THEME;
+}
+
+interface CachedTerminalSession {
+  term: Terminal;
+  fitAddon: FitAddon;
+  element: HTMLDivElement;
+  unlistenOutput?: () => void;
+  unlistenExit?: () => void;
+  isNativePty: boolean;
+}
+
+const terminalSessionCache = new Map<string, CachedTerminalSession>();
+
+// Export helper to explicitly dispose and destroy a terminal when closed by the user
+export function disposeTerminalInstance(id: string) {
+  const cached = terminalSessionCache.get(id);
+  if (cached) {
+    if (cached.unlistenOutput) cached.unlistenOutput();
+    if (cached.unlistenExit) cached.unlistenExit();
+    try {
+      cached.term.dispose();
+    } catch {
+      // ignore
+    }
+    terminalSessionCache.delete(id);
+  }
+}
+
+export function disposeAllTerminalInstances() {
+  for (const [, cached] of terminalSessionCache.entries()) {
+    if (cached.unlistenOutput) cached.unlistenOutput();
+    if (cached.unlistenExit) cached.unlistenExit();
+    try {
+      cached.term.dispose();
+    } catch {
+      // ignore
+    }
+  }
+  terminalSessionCache.clear();
+}
+
 const XTermInstance = forwardRef<XTermHandle, XTermInstanceProps>(({ session, onActivity, onRestart, onOpenMoveMenu }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -86,25 +178,42 @@ const XTermInstance = forwardRef<XTermHandle, XTermInstanceProps>(({ session, on
     return false;
   }, [showToast]);
 
+  const lastPasteTimeRef = useRef<number>(0);
+
+  // Sanitize text and paste into terminal safely without auto-executing
+  const doSanitizedPaste = useCallback((rawText: string): boolean => {
+    const now = Date.now();
+    // Guard against duplicate paste triggers within 150ms
+    if (now - lastPasteTimeRef.current < 150) {
+      return false;
+    }
+    lastPasteTimeRef.current = now;
+
+    if (!termRef.current || isDisposedRef.current) return false;
+
+    // Strip trailing line breaks (\r, \n, \r\n) so the pasted command is NEVER automatically executed
+    const sanitized = rawText.replace(/[\r\n]+$/, "");
+    if (!sanitized) return false;
+
+    termRef.current.paste(sanitized);
+    termRef.current.focus();
+    showToast("Pasted from clipboard");
+    return true;
+  }, [showToast]);
+
   // Paste text from clipboard into terminal
   const pasteClipboard = useCallback(async (): Promise<boolean> => {
     if (!termRef.current || isDisposedRef.current) return false;
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
-        if (isNativePtyRef.current) {
-          await invoke("write_terminal", { id: session.id, data: text });
-        } else {
-          termRef.current.write(text);
-        }
-        showToast("Pasted from clipboard");
-        return true;
+        return doSanitizedPaste(text);
       }
     } catch (err) {
       console.error("Clipboard paste error:", err);
     }
     return false;
-  }, [session.id, showToast]);
+  }, [doSanitizedPaste]);
 
   const selectAll = useCallback(() => {
     if (termRef.current) {
@@ -138,64 +247,14 @@ const XTermInstance = forwardRef<XTermHandle, XTermInstanceProps>(({ session, on
     focus,
   }));
 
-const SAGE_TERMINAL_THEME = {
-  background: "#0a0a0a",
-  foreground: "#e2e8f0",
-  cursor: "#9fb4a5",
-  cursorAccent: "#0a0a0a",
-  selectionBackground: "rgba(126, 145, 131, 0.30)",
-  black: "#151617",
-  red: "#f87171",
-  green: "#7e9183",
-  yellow: "#eab308",
-  blue: "#8fa89b",
-  magenta: "#b3c7b9",
-  cyan: "#a3c4bc",
-  white: "#f1f5f9",
-  brightBlack: "#4b5563",
-  brightRed: "#ef4444",
-  brightGreen: "#9fb4a5",
-  brightYellow: "#facc15",
-  brightBlue: "#a8bcad",
-  brightMagenta: "#cbd5e1",
-  brightCyan: "#c4dad2",
-  brightWhite: "#ffffff",
-};
-
-const GOLD_TERMINAL_THEME = {
-  background: "#0a0a0a",
-  foreground: "#e2e8f0",
-  cursor: "#dfc99c",
-  cursorAccent: "#0a0a0a",
-  selectionBackground: "rgba(197, 160, 89, 0.30)",
-  black: "#151617",
-  red: "#f87171",
-  green: "#c5a059",
-  yellow: "#e5cca0",
-  blue: "#d4b373",
-  magenta: "#e5cca0",
-  cyan: "#dcc28f",
-  white: "#f1f5f9",
-  brightBlack: "#4b5563",
-  brightRed: "#ef4444",
-  brightGreen: "#dfc99c",
-  brightYellow: "#facc15",
-  brightBlue: "#edd6aa",
-  brightMagenta: "#f4e4c7",
-  brightCyan: "#faeedb",
-  brightWhite: "#ffffff",
-};
-
-function getActiveTerminalTheme() {
-  const current = document.documentElement.getAttribute("data-theme");
-  return current === "gold" ? GOLD_TERMINAL_THEME : SAGE_TERMINAL_THEME;
-}
-
   const copySelectionRef = useRef(copySelection);
   copySelectionRef.current = copySelection;
 
   const pasteClipboardRef = useRef(pasteClipboard);
   pasteClipboardRef.current = pasteClipboard;
+
+  const doSanitizedPasteRef = useRef(doSanitizedPaste);
+  doSanitizedPasteRef.current = doSanitizedPaste;
 
   const onActivityRef = useRef(onActivity);
   onActivityRef.current = onActivity;
@@ -204,160 +263,201 @@ function getActiveTerminalTheme() {
     if (!containerRef.current) return;
     isDisposedRef.current = false;
 
-    // Initialize xterm with dynamic theme
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
-      theme: getActiveTerminalTheme(),
-      allowTransparency: true,
-    });
+    let cached = terminalSessionCache.get(session.id);
+    let term: Terminal;
+    let fitAddon: FitAddon;
+    let termDomElement: HTMLDivElement;
 
-    const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
-    const clipboardAddon = new ClipboardAddon();
+    if (cached) {
+      // Re-attach existing terminal and preserve all state, output history and running process!
+      term = cached.term;
+      fitAddon = cached.fitAddon;
+      termDomElement = cached.element;
+      termRef.current = term;
+      fitAddonRef.current = fitAddon;
+      isNativePtyRef.current = cached.isNativePty;
 
-    term.loadAddon(fitAddon);
-    term.loadAddon(webLinksAddon);
-    term.loadAddon(clipboardAddon);
-    term.open(containerRef.current);
+      // Update theme if changed
+      term.options.theme = getActiveTerminalTheme();
 
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
+      // Ensure DOM element is appended into current container
+      if (!containerRef.current.contains(termDomElement)) {
+        containerRef.current.innerHTML = "";
+        containerRef.current.appendChild(termDomElement);
+      }
 
-    try {
-      fitAddon.fit();
-    } catch {
-      // ignore
-    }
+      try {
+        fitAddon.fit();
+        term.refresh(0, term.rows - 1);
+      } catch {
+        // ignore
+      }
+    } else {
+      // Initialize fresh xterm instance with dynamic theme
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 13,
+        fontFamily: "'Cascadia Code', 'Fira Code', Consolas, monospace",
+        theme: getActiveTerminalTheme(),
+        allowTransparency: true,
+      });
 
-    // Intercept keyboard shortcuts for copy / paste / select all
-    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      if (e.type !== "keydown") return true;
+      fitAddon = new FitAddon();
+      const webLinksAddon = new WebLinksAddon();
+      const clipboardAddon = new ClipboardAddon();
 
-      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      term.loadAddon(fitAddon);
+      term.loadAddon(webLinksAddon);
+      term.loadAddon(clipboardAddon);
 
-      // 1. Standard Copy (Ctrl+C / Cmd+C):
-      // If there is an active text selection, copy it to clipboard and prevent sending SIGINT (^C)
-      if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key === "c" || e.key === "C")) {
-        if (term.hasSelection()) {
-          copySelectionRef.current();
+      termDomElement = document.createElement("div");
+      termDomElement.className = "xterm-session-inner-wrapper";
+      termDomElement.style.width = "100%";
+      termDomElement.style.height = "100%";
+
+      term.open(termDomElement);
+      containerRef.current.innerHTML = "";
+      containerRef.current.appendChild(termDomElement);
+
+      termRef.current = term;
+      fitAddonRef.current = fitAddon;
+
+      try {
+        fitAddon.fit();
+      } catch {
+        // ignore
+      }
+
+      // Intercept keyboard shortcuts for copy / paste / select all
+      term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        if (e.type !== "keydown") return true;
+
+        const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+        // 1. Standard Copy (Ctrl+C / Cmd+C):
+        if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key === "c" || e.key === "C")) {
+          if (term.hasSelection()) {
+            copySelectionRef.current();
+            return false;
+          }
+          return true;
+        }
+
+        // 2. Explicit Copy (Ctrl+Shift+C or Ctrl+Insert)
+        if ((isCtrlOrCmd && e.shiftKey && (e.key === "c" || e.key === "C")) ||
+            (isCtrlOrCmd && !e.shiftKey && e.key === "Insert")) {
+          if (term.hasSelection()) {
+            copySelectionRef.current();
+          }
           return false;
         }
-        // No selection: let standard Ctrl+C pass through to interrupt the command
+
+        // 3. Standard Paste (Ctrl+V / Cmd+V / Ctrl+Shift+V / Shift+Insert)
+        if ((isCtrlOrCmd && (e.key === "v" || e.key === "V")) ||
+            (e.shiftKey && !e.ctrlKey && !e.altKey && e.key === "Insert")) {
+          e.preventDefault();
+          pasteClipboardRef.current();
+          return false;
+        }
+
+        // 4. Select All (Ctrl+Shift+A)
+        if (isCtrlOrCmd && e.shiftKey && (e.key === "a" || e.key === "A")) {
+          term.selectAll();
+          return false;
+        }
+
         return true;
-      }
+      });
 
-      // 2. Explicit Copy (Ctrl+Shift+C or Ctrl+Insert)
-      if ((isCtrlOrCmd && e.shiftKey && (e.key === "c" || e.key === "C")) ||
-          (isCtrlOrCmd && !e.shiftKey && e.key === "Insert")) {
-        if (term.hasSelection()) {
-          copySelectionRef.current();
-        }
-        return false;
-      }
+      const sessionCacheEntry: CachedTerminalSession = {
+        term,
+        fitAddon,
+        element: termDomElement,
+        isNativePty: false,
+      };
+      terminalSessionCache.set(session.id, sessionCacheEntry);
 
-      // 3. Standard Paste (Ctrl+V / Cmd+V / Ctrl+Shift+V / Shift+Insert)
-      if ((isCtrlOrCmd && (e.key === "v" || e.key === "V")) ||
-          (e.shiftKey && !e.ctrlKey && !e.altKey && e.key === "Insert")) {
-        pasteClipboardRef.current();
-        return false; // Prevent raw 0x16 character
-      }
-
-      // 4. Select All (Ctrl+Shift+A)
-      if (isCtrlOrCmd && e.shiftKey && (e.key === "a" || e.key === "A")) {
-        term.selectAll();
-        return false;
-      }
-
-      return true;
-    });
-
-    let unlistenOutput: (() => void) | undefined;
-    let unlistenExit: (() => void) | undefined;
-
-    const setupNativePty = async () => {
-      try {
-        // 1. Listen for output streaming from Rust backend
-        unlistenOutput = await listen<string>(`term-output-${session.id}`, (event) => {
-          if (!isDisposedRef.current) {
-            term.write(event.payload);
-            onActivityRef.current?.();
-          }
-        });
-
-        // 2. Listen for process exit
-        unlistenExit = await listen(`term-exit-${session.id}`, () => {
-          if (!isDisposedRef.current) {
-            term.writeln("\r\n\x1b[33m[Process exited]\x1b[0m");
-          }
-        });
-
-        // 3. Send user keystrokes from xterm to Rust PTY
-        term.onData((data) => {
-          if (!isDisposedRef.current) {
-            invoke("write_terminal", { id: session.id, data }).catch(() => {});
-          }
-        });
-
-        // 4. Spawn the actual native PTY process on the backend
-        const effectiveShell = session.shellOrCommand || "powershell.exe";
-        let effectiveArgs = session.args || null;
-        let commandToSend: string | null = null;
-
-        // If args contain "-Command", extract the command to send via PTY input for clean, non-crashing execution
-        if (effectiveArgs && effectiveArgs.includes("-Command")) {
-          const cmdIndex = effectiveArgs.indexOf("-Command");
-          if (cmdIndex !== -1 && cmdIndex + 1 < effectiveArgs.length) {
-            commandToSend = effectiveArgs.slice(cmdIndex + 1).join(" ");
-          }
-          effectiveArgs = ["-NoLogo"];
-        }
-
-        await invoke("spawn_terminal", {
-          id: session.id,
-          title: session.title,
-          shell: effectiveShell,
-          args: effectiveArgs,
-          cwd: session.cwd || null,
-          cols: term.cols || 80,
-          rows: term.rows || 24,
-        });
-
-        isNativePtyRef.current = true;
-
-        if (commandToSend) {
-          window.setTimeout(() => {
+      const setupNativePty = async () => {
+        try {
+          // 1. Listen for output streaming from Rust backend
+          const unlistenOutput = await listen<string>(`term-output-${session.id}`, (event) => {
             if (!isDisposedRef.current) {
-              invoke("write_terminal", { id: session.id, data: commandToSend + "\r" }).catch(() => {});
-            }
-          }, 180);
-        }
-      } catch (err: any) {
-        isNativePtyRef.current = false;
-        // Fallback for browser preview mode or error display
-        const errMsg = err?.toString() || "Unknown error";
-        if (errMsg.includes("not found") || errMsg.includes("Failed to spawn")) {
-          term.writeln(`\r\n\x1b[31m[Error launching shell]: ${errMsg}\x1b[0m\r\n`);
-        } else {
-          term.writeln("\x1b[36m⚡ Running in Web Preview Mode\x1b[0m");
-          term.writeln("Interactive ConPTY available when running in Tauri native app.\r\n");
-          term.write(`PS ${session.cwd || "~"}> `);
-
-          term.onData((data) => {
-            if (data === "\r") {
-              term.write(`\r\nPS ${session.cwd || "~"}> `);
-            } else if (data === "\u007F") {
-              term.write("\b \b");
-            } else {
-              term.write(data);
+              term.write(event.payload);
+              onActivityRef.current?.();
             }
           });
-        }
-      }
-    };
+          sessionCacheEntry.unlistenOutput = unlistenOutput;
 
-    setupNativePty();
+          // 2. Listen for process exit
+          const unlistenExit = await listen(`term-exit-${session.id}`, () => {
+            if (!isDisposedRef.current) {
+              term.writeln("\r\n\x1b[33m[Process exited]\x1b[0m");
+            }
+          });
+          sessionCacheEntry.unlistenExit = unlistenExit;
+
+          // 3. Send user keystrokes from xterm to Rust PTY
+          term.onData((data) => {
+            invoke("write_terminal", { id: session.id, data }).catch(() => {});
+          });
+
+          // 4. Spawn the actual native PTY process on the backend
+          const effectiveShell = session.shellOrCommand || "powershell.exe";
+          let effectiveArgs = session.args || null;
+          let commandToSend: string | null = null;
+
+          if (effectiveArgs && effectiveArgs.includes("-Command")) {
+            const cmdIndex = effectiveArgs.indexOf("-Command");
+            if (cmdIndex !== -1 && cmdIndex + 1 < effectiveArgs.length) {
+              commandToSend = effectiveArgs.slice(cmdIndex + 1).join(" ");
+            }
+            effectiveArgs = ["-NoLogo"];
+          }
+
+          await invoke("spawn_terminal", {
+            id: session.id,
+            title: session.title,
+            shell: effectiveShell,
+            args: effectiveArgs,
+            cwd: session.cwd || null,
+            cols: term.cols || 80,
+            rows: term.rows || 24,
+          });
+
+          sessionCacheEntry.isNativePty = true;
+          isNativePtyRef.current = true;
+
+          if (commandToSend) {
+            window.setTimeout(() => {
+              invoke("write_terminal", { id: session.id, data: commandToSend + "\r" }).catch(() => {});
+            }, 180);
+          }
+        } catch (err: any) {
+          sessionCacheEntry.isNativePty = false;
+          isNativePtyRef.current = false;
+          const errMsg = err?.toString() || "Unknown error";
+          if (errMsg.includes("not found") || errMsg.includes("Failed to spawn")) {
+            term.writeln(`\r\n\x1b[31m[Error launching shell]: ${errMsg}\x1b[0m\r\n`);
+          } else {
+            term.writeln("\x1b[36m⚡ Running in Web Preview Mode\x1b[0m");
+            term.writeln("Interactive ConPTY available when running in Tauri native app.\r\n");
+            term.write(`PS ${session.cwd || "~"}> `);
+
+            term.onData((data) => {
+              if (data === "\r") {
+                term.write(`\r\nPS ${session.cwd || "~"}> `);
+              } else if (data === "\u007F") {
+                term.write("\b \b");
+              } else {
+                term.write(data);
+              }
+            });
+          }
+        }
+      };
+
+      setupNativePty();
+    }
 
     // Auto-fit on container resize observer with guard
     const resizeObserver = new ResizeObserver((entries) => {
@@ -415,10 +515,7 @@ function getActiveTerminalTheme() {
       window.clearTimeout(initialFitTimeout);
       resizeObserver.disconnect();
       themeObserver.disconnect();
-      if (unlistenOutput) unlistenOutput();
-      if (unlistenExit) unlistenExit();
-      invoke("kill_terminal", { id: session.id }).catch(() => {});
-      term.dispose();
+      // NOTE: Do not kill process or dispose terminal here; keep alive in cache
     };
   }, [session.id]);
 
@@ -469,6 +566,16 @@ function getActiveTerminalTheme() {
       ref={containerRef} 
       className="xterm-instance-container"
       onContextMenu={handleContextMenu}
+      onPaste={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const text = e.clipboardData?.getData("text/plain");
+        if (text) {
+          doSanitizedPaste(text);
+        } else {
+          pasteClipboard();
+        }
+      }}
     >
       {/* Toast Feedback */}
       {toastMessage && (
@@ -583,6 +690,5 @@ function getActiveTerminalTheme() {
     </div>
   );
 });
-
 
 export default XTermInstance;

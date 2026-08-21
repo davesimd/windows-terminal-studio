@@ -980,7 +980,7 @@ export default function SettingsPage({
                     <h3>Workspace Toolbar Pinned Presets</h3>
                   </div>
                   <span className="card-tag">
-                    {(settings.pinnedQuickPresets || DEFAULT_PINNED_PRESETS).filter(id => settings.visibleAgents ? settings.visibleAgents[id] !== false : true).length} Pinned
+                    {(settings.pinnedQuickPresets ?? DEFAULT_PINNED_PRESETS).filter(id => settings.visibleAgents ? settings.visibleAgents[id] !== false : true).length} Pinned
                   </span>
                 </div>
 
@@ -990,7 +990,7 @@ export default function SettingsPage({
 
                 <div className="mt-3">
                   <PinnedPresetsCustomizer
-                    pinnedPresets={settings.pinnedQuickPresets || DEFAULT_PINNED_PRESETS}
+                    pinnedPresets={settings.pinnedQuickPresets ?? DEFAULT_PINNED_PRESETS}
                     onUpdatePinnedPresets={(updated) => {
                       onUpdateSettings({ pinnedQuickPresets: updated });
                       showFeedback("Updated toolbar pins");

@@ -15,8 +15,7 @@ import {
   Clock,
   ChevronDown,
   Check,
-  Settings as SettingsIcon,
-  CheckCircle2
+  Settings as SettingsIcon
 } from "lucide-react";
 import { TerminalData } from "../terminal/TerminalSession";
 import { DirectoryTemplate } from "../../types/settings";
@@ -440,7 +439,6 @@ export default function HomeLaunchpad({
                           <div className="custom-dropdown-group-title">AI Coding Agents ({aiAgents.length})</div>
                           {aiAgents.map((agent) => {
                             const isSelected = agent.id === selectedAgentId;
-                            const isInstalled = !!detectedAgents?.[agent.id];
                             return (
                               <div
                                 key={agent.id}
@@ -452,16 +450,7 @@ export default function HomeLaunchpad({
                               >
                                 <span className="custom-item-icon">{agent.icon}</span>
                                 <div className="custom-dropdown-item-text">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="custom-item-title">{agent.name}</span>
-                                    {isInstalled && (
-                                      <span className="installed-chip-small" title="Installed on PATH">
-                                        <CheckCircle2 size={10} className="text-emerald-400" />
-                                        <span>Installed</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                  <span className="custom-item-sub">{agent.description}</span>
+                                  <span className="custom-item-title">{agent.name}</span>
                                 </div>
                                 <span className="custom-item-badge">{agent.badge}</span>
                                 {isSelected && <Check size={13} className="text-sage custom-item-check" />}
@@ -489,7 +478,6 @@ export default function HomeLaunchpad({
                                 <span className="custom-item-icon">{agent.icon}</span>
                                 <div className="custom-dropdown-item-text">
                                   <span className="custom-item-title">{agent.name}</span>
-                                  <span className="custom-item-sub">{agent.description}</span>
                                 </div>
                                 <span className="custom-item-badge">{agent.badge}</span>
                                 {isSelected && <Check size={13} className="text-sage custom-item-check" />}
@@ -552,7 +540,6 @@ export default function HomeLaunchpad({
                         <Folder size={13} className="text-muted" />
                         <div className="custom-dropdown-item-text">
                           <span className="custom-item-title">User Default (~)</span>
-                          <span className="custom-item-sub">Home user directory</span>
                         </div>
                         {!selectedCwd && <Check size={13} className="text-sage custom-item-check" />}
                       </div>
@@ -573,7 +560,6 @@ export default function HomeLaunchpad({
                             <Folder size={13} className="text-sage" />
                             <div className="custom-dropdown-item-text">
                               <span className="custom-item-title">{tmpl.name}</span>
-                              <span className="custom-item-sub" title={tmpl.path}>{tmpl.path}</span>
                             </div>
                             {isSelected && <Check size={13} className="text-sage custom-item-check" />}
                           </div>
@@ -616,7 +602,6 @@ export default function HomeLaunchpad({
                         >
                           <div className="custom-dropdown-item-text">
                             <span className="custom-item-title">{tmpl.label}</span>
-                            <span className="custom-item-sub">{tmpl.prompt}</span>
                           </div>
                         </div>
                       ))}

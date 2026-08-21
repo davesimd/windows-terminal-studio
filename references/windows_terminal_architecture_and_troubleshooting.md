@@ -126,6 +126,12 @@ Workspaces are preserved in the DOM using CSS display toggles:
 </div>
 ```
 
+### Terminal State & Process Preservation Across Workspace Switches and Transfers
+To ensure terminals maintain their exact state without resetting when switching workspaces or moving terminals between workspaces:
+1. **Module-Level Terminal Session Cache**: [`XTermInstance.tsx`](file:///c:/Users/daves/.gemini/antigravity-ide/scratch/windows_application/src/components/terminal/XTermInstance.tsx) maintains a cache of active `Terminal` instances, addons, and DOM elements indexed by `session.id`.
+2. **Seamless Remounting**: When a terminal is moved from one workspace to another, or when workspaces are switched, the existing terminal DOM element and running process are seamlessly preserved and re-attached without spawning a new process or clearing the buffer.
+3. **Explicit Destruction Lifecycle**: The ConPTY process and XTerm instances are only disposed when explicitly closed by the user (`handleCloseTerminal`, `handleKillAll`, or workspace deletion), never during component unmount or layout transfers.
+
 ---
 
 ## 6. Process Lifecycle & Cleanup

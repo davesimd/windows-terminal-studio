@@ -12,11 +12,13 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Windows Application Studio",
         "width": 1150,
         "height": 780,
         "minWidth": 980,
         "minHeight": 640,
+        "maximized": true,
         "theme": "Dark",
         "backgroundColor": "#0f1117"
       }

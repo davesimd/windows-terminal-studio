@@ -52,6 +52,8 @@ export interface TerminalData {
   lastActiveAt?: number;
   startedAt?: number;
   outputChunksCount?: number;
+  initialPrompt?: string;
+  autoSendPrompt?: boolean;
 }
 
 interface TerminalSessionProps {

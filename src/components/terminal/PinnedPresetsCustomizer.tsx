@@ -211,9 +211,6 @@ export default function PinnedPresetsCustomizer({
                         </span>
                       </div>
                     </div>
-                    <span className="customize-card-desc">
-                      {preset.description}
-                    </span>
                   </div>
                 </div>
 

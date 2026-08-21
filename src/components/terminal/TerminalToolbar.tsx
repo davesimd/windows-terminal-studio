@@ -48,7 +48,7 @@ export default function TerminalToolbar({
 }: TerminalToolbarProps) {
   // Active preset definitions derived from pinned IDs (filtered by visibility)
   const activePresets = useMemo(() => {
-    const activeIds = pinnedPresets && pinnedPresets.length > 0 ? pinnedPresets : DEFAULT_PINNED_PRESETS;
+    const activeIds = Array.isArray(pinnedPresets) ? pinnedPresets : DEFAULT_PINNED_PRESETS;
     return activeIds
       .filter((id) => (visibleAgents?.[id] ?? true))
       .map((id) => ALL_PRESET_DEFINITIONS.find((p) => p.id === id))

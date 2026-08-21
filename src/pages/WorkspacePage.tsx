@@ -13,11 +13,11 @@ import {
   Code2,
   Layers,
   ChevronDown,
-  Settings as SettingsIcon,
-  CheckCircle2
+  Settings as SettingsIcon
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import TerminalSession, { TerminalData } from "../components/terminal/TerminalSession";
+import { disposeTerminalInstance } from "../components/terminal/XTermInstance";
 import TerminalToolbar, { GridLayoutMode } from "../components/terminal/TerminalToolbar";
 import LaunchAppModal from "../components/terminal/LaunchAppModal";
 import BroadcastModal from "../components/terminal/BroadcastModal";
@@ -290,6 +290,7 @@ export default function WorkspacePage({
 
   // Close / Kill a terminal
   const handleCloseTerminal = async (id: string) => {
+    disposeTerminalInstance(id);
     try {
       await invoke("kill_terminal", { id });
     } catch {
@@ -322,6 +323,7 @@ export default function WorkspacePage({
     const existing = workspace.terminals.find((t) => t.id === id);
     if (!existing) return;
 
+    disposeTerminalInstance(id);
     await handleCloseTerminal(id);
     spawnTerminal({
       title: existing.title,
@@ -335,6 +337,7 @@ export default function WorkspacePage({
   // Close all terminals in current workspace
   const handleKillAll = async () => {
     for (const t of workspace.terminals) {
+      disposeTerminalInstance(t.id);
       try {
         await invoke("kill_terminal", { id: t.id });
       } catch {
@@ -557,30 +560,21 @@ export default function WorkspacePage({
                     {quickSpawnAiPresets.length > 0 && (
                       <>
                         <div className="custom-dropdown-group-title">AI Coding Agents</div>
-                        {quickSpawnAiPresets.map((preset) => {
-                          const isInstalled = !!detectedAgents?.[preset.id];
-                          return (
-                            <div
-                              key={preset.id}
-                              className="custom-dropdown-item"
-                              onClick={() => {
-                                handleQuickSpawn(preset.id as TerminalData["appType"]);
-                                setIsQuickSpawnOpen(false);
-                              }}
-                            >
-                              <span className="custom-item-icon">{preset.icon(14)}</span>
-                              <div className="custom-dropdown-item-text">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="custom-item-title">{preset.title}</span>
-                                  {isInstalled && (
-                                    <span className="installed-chip-small"><CheckCircle2 size={9} /> Installed</span>
-                                  )}
-                                </div>
-                                <span className="custom-item-sub">{preset.description}</span>
-                              </div>
+                        {quickSpawnAiPresets.map((preset) => (
+                          <div
+                            key={preset.id}
+                            className="custom-dropdown-item"
+                            onClick={() => {
+                              handleQuickSpawn(preset.id as TerminalData["appType"]);
+                              setIsQuickSpawnOpen(false);
+                            }}
+                          >
+                            <span className="custom-item-icon">{preset.icon(14)}</span>
+                            <div className="custom-dropdown-item-text">
+                              <span className="custom-item-title">{preset.title}</span>
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </>
                     )}
 
@@ -588,30 +582,21 @@ export default function WorkspacePage({
                       <>
                         {quickSpawnAiPresets.length > 0 && <div className="custom-dropdown-divider" />}
                         <div className="custom-dropdown-group-title">Runtimes & Interpreters</div>
-                        {quickSpawnDevPresets.map((preset) => {
-                          const isInstalled = !!detectedAgents?.[preset.id];
-                          return (
-                            <div
-                              key={preset.id}
-                              className="custom-dropdown-item"
-                              onClick={() => {
-                                handleQuickSpawn(preset.id as TerminalData["appType"]);
-                                setIsQuickSpawnOpen(false);
-                              }}
-                            >
-                              <span className="custom-item-icon">{preset.icon(14)}</span>
-                              <div className="custom-dropdown-item-text">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="custom-item-title">{preset.title}</span>
-                                  {isInstalled && (
-                                    <span className="installed-chip-small"><CheckCircle2 size={9} /> Installed</span>
-                                  )}
-                                </div>
-                                <span className="custom-item-sub">{preset.description}</span>
-                              </div>
+                        {quickSpawnDevPresets.map((preset) => (
+                          <div
+                            key={preset.id}
+                            className="custom-dropdown-item"
+                            onClick={() => {
+                              handleQuickSpawn(preset.id as TerminalData["appType"]);
+                              setIsQuickSpawnOpen(false);
+                            }}
+                          >
+                            <span className="custom-item-icon">{preset.icon(14)}</span>
+                            <div className="custom-dropdown-item-text">
+                              <span className="custom-item-title">{preset.title}</span>
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </>
                     )}
 
@@ -619,30 +604,21 @@ export default function WorkspacePage({
                       <>
                         {(quickSpawnAiPresets.length > 0 || quickSpawnDevPresets.length > 0) && <div className="custom-dropdown-divider" />}
                         <div className="custom-dropdown-group-title">System Shells</div>
-                        {quickSpawnShellPresets.map((preset) => {
-                          const isInstalled = detectedAgents?.[preset.id] !== false;
-                          return (
-                            <div
-                              key={preset.id}
-                              className="custom-dropdown-item"
-                              onClick={() => {
-                                handleQuickSpawn(preset.id as TerminalData["appType"]);
-                                setIsQuickSpawnOpen(false);
-                              }}
-                            >
-                              <span className="custom-item-icon">{preset.icon(14)}</span>
-                              <div className="custom-dropdown-item-text">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="custom-item-title">{preset.title}</span>
-                                  {isInstalled && (
-                                    <span className="installed-chip-small"><CheckCircle2 size={9} /> Ready</span>
-                                  )}
-                                </div>
-                                <span className="custom-item-sub">{preset.description}</span>
-                              </div>
+                        {quickSpawnShellPresets.map((preset) => (
+                          <div
+                            key={preset.id}
+                            className="custom-dropdown-item"
+                            onClick={() => {
+                              handleQuickSpawn(preset.id as TerminalData["appType"]);
+                              setIsQuickSpawnOpen(false);
+                            }}
+                          >
+                            <span className="custom-item-icon">{preset.icon(14)}</span>
+                            <div className="custom-dropdown-item-text">
+                              <span className="custom-item-title">{preset.title}</span>
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </>
                     )}
 
@@ -786,7 +762,7 @@ export default function WorkspacePage({
         <CustomizePresetsModal
           isOpen={isCustomizeModalOpen}
           onClose={() => setIsCustomizeModalOpen(false)}
-          pinnedPresets={pinnedPresets || DEFAULT_PINNED_PRESETS}
+          pinnedPresets={pinnedPresets ?? DEFAULT_PINNED_PRESETS}
           onSavePinnedPresets={onUpdatePinnedPresets}
           detectedAgents={detectedAgents}
           visibleAgents={visibleAgents}

@@ -7,22 +7,27 @@ import {
   Zap, 
   Plus, 
   Edit2, 
+  Edit3,
   Trash2, 
   Check, 
   Folder
 } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import WorkspacePage from "./pages/WorkspacePage";
+import ScratchpadPage from "./pages/ScratchpadPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
 import LaunchAppModal from "./components/terminal/LaunchAppModal";
 import { TerminalData } from "./components/terminal/TerminalSession";
+import { disposeTerminalInstance } from "./components/terminal/XTermInstance";
 import { WorkspaceData, ClosedWorkspaceData, WorkspaceActivityState } from "./types/workspace";
-import { HistoricalSession } from "./types/analytics";
+import { HistoricalSession, AppType } from "./types/analytics";
 import { AppSettings, DEFAULT_APP_SETTINGS, DEFAULT_DIRECTORY_TEMPLATES, DEFAULT_VISIBLE_AGENTS } from "./types/settings";
+import { ScratchpadItem, DeletedScratchpadItem, INITIAL_SCRATCHPAD } from "./types/scratchpad";
+import { ALL_PRESET_DEFINITIONS } from "./constants/presets";
 import "./App.css";
 
-type NavTab = "home" | "workspace" | "analytics" | "settings";
+type NavTab = "home" | "workspace" | "scratchpad" | "analytics" | "settings";
 
 const STORAGE_KEYS = {
   SETTINGS: "desktop_studio_settings_v1",
@@ -30,6 +35,9 @@ const STORAGE_KEYS = {
   CLOSED_WORKSPACES: "desktop_studio_closed_workspaces_v1",
   TELEMETRY: "desktop_studio_telemetry_v1",
   ACTIVE_WS: "desktop_studio_active_ws_v1",
+  SCRATCHPADS: "desktop_studio_scratchpads_v1",
+  DELETED_SCRATCHPADS: "desktop_studio_deleted_scratchpads_v1",
+  ACTIVE_PAD: "desktop_studio_active_pad_v1",
 };
 
 const INITIAL_WORKSPACES: WorkspaceData[] = [
@@ -58,7 +66,7 @@ export default function App() {
           ...DEFAULT_APP_SETTINGS,
           ...parsed,
           directoryTemplates: templates.length > 0 ? templates : DEFAULT_DIRECTORY_TEMPLATES,
-          pinnedQuickPresets: parsed.pinnedQuickPresets || DEFAULT_APP_SETTINGS.pinnedQuickPresets,
+          pinnedQuickPresets: Array.isArray(parsed.pinnedQuickPresets) ? parsed.pinnedQuickPresets : DEFAULT_APP_SETTINGS.pinnedQuickPresets,
           visibleAgents: parsed.visibleAgents || DEFAULT_VISIBLE_AGENTS,
           detectedAgents: parsed.detectedAgents || {},
         };
@@ -175,6 +183,44 @@ export default function App() {
     }
     return [];
   });
+
+  // Load initial scratchpads from localStorage
+  const [scratchpads, setScratchpads] = useState<ScratchpadItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SCRATCHPADS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [INITIAL_SCRATCHPAD];
+  });
+
+  const [activePadId, setActivePadId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_PAD);
+      if (saved) return saved;
+    } catch {
+      // ignore
+    }
+    return INITIAL_SCRATCHPAD.id;
+  });
+
+  // Load deleted scratchpads history from localStorage
+  const [deletedScratchpads, setDeletedScratchpads] = useState<DeletedScratchpadItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DELETED_SCRATCHPADS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   
   // Tick to refresh idle/active status transitions and durations
   const [, setTick] = useState(0);
@@ -245,6 +291,191 @@ export default function App() {
     }
   }, [sessionHistory, settings.persistAnalyticsHistory]);
 
+  // Save scratchpads to persistent storage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.SCRATCHPADS, JSON.stringify(scratchpads));
+      localStorage.setItem(STORAGE_KEYS.DELETED_SCRATCHPADS, JSON.stringify(deletedScratchpads));
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_PAD, activePadId);
+    } catch (err) {
+      console.error("Failed to save scratchpads:", err);
+    }
+  }, [scratchpads, deletedScratchpads, activePadId]);
+
+  // Scratchpad CRUD Handlers
+  const handleCreateScratchpad = () => {
+    const newIndex = scratchpads.length + 1;
+    const newPad: ScratchpadItem = {
+      id: `pad_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: `Prompt Draft ${newIndex}`,
+      content: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setScratchpads((prev) => [newPad, ...prev]);
+    setActivePadId(newPad.id);
+  };
+
+  const handleUpdateScratchpad = (id: string, patch: Partial<ScratchpadItem>) => {
+    setScratchpads((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: Date.now() } : p))
+    );
+  };
+
+  const handleDeleteScratchpad = (id: string) => {
+    const target = scratchpads.find((p) => p.id === id);
+    if (target) {
+      const deletedEntry: DeletedScratchpadItem = {
+        ...target,
+        deletedAt: Date.now(),
+      };
+      setDeletedScratchpads((prev) => [deletedEntry, ...prev.filter((p) => p.id !== id)]);
+    }
+
+    setScratchpads((prev) => {
+      const remaining = prev.filter((p) => p.id !== id);
+      if (remaining.length === 0) {
+        const freshPad: ScratchpadItem = {
+          id: `pad_${Date.now()}`,
+          title: "Prompt Draft 1",
+          content: "",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        setActivePadId(freshPad.id);
+        return [freshPad];
+      }
+      if (activePadId === id && remaining.length > 0) {
+        setActivePadId(remaining[0].id);
+      }
+      return remaining;
+    });
+  };
+
+  const handleRestoreScratchpad = (id: string) => {
+    const target = deletedScratchpads.find((p) => p.id === id);
+    if (!target) return;
+    const { deletedAt, ...restoredPad } = target;
+    setScratchpads((prev) => [restoredPad, ...prev.filter((p) => p.id !== restoredPad.id)]);
+    setActivePadId(restoredPad.id);
+    setDeletedScratchpads((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const handlePermanentDeleteScratchpad = (id: string) => {
+    setDeletedScratchpads((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const handleClearDeletedScratchpads = () => {
+    setDeletedScratchpads([]);
+  };
+
+  const handleDuplicateScratchpad = (id: string) => {
+    const source = scratchpads.find((p) => p.id === id);
+    if (!source) return;
+    const duplicated: ScratchpadItem = {
+      ...source,
+      id: `pad_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: `${source.title} (Copy)`,
+      pinned: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setScratchpads((prev) => [duplicated, ...prev]);
+    setActivePadId(duplicated.id);
+  };
+
+  // Launch agent from scratchpad with prompt and readiness check
+  const handleSpawnAgentFromScratchpad = (config: {
+    agentType: AppType;
+    prompt: string;
+    targetWorkspaceId: string | "new";
+    newWorkspaceName?: string;
+    autoSend: boolean;
+    cwd?: string;
+  }) => {
+    // Copy prompt to clipboard so it's always immediately accessible
+    try {
+      navigator.clipboard.writeText(config.prompt);
+    } catch {
+      // ignore
+    }
+
+    const preset = ALL_PRESET_DEFINITIONS.find((p) => p.id === config.agentType);
+    const title = preset ? preset.shortTitle : config.agentType;
+    const shell = preset ? preset.commandName : `${config.agentType}.exe`;
+
+    const targetWs =
+      config.targetWorkspaceId !== "new"
+        ? workspaces.find((w) => w.id === config.targetWorkspaceId)
+        : null;
+
+    const cwdToUse = config.cwd?.trim() || targetWs?.defaultCwd || settings.defaultCwd || "";
+
+    const newTermId = `term_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newTerm: TerminalData = {
+      id: newTermId,
+      title: `${title} (Agent)`,
+      appType: config.agentType,
+      shellOrCommand: shell,
+      cwd: cwdToUse || undefined,
+      initialPrompt: config.prompt,
+      autoSendPrompt: config.autoSend !== false,
+      status: "running",
+      startedAt: Date.now(),
+      outputChunksCount: 0,
+    };
+
+    let destinationWsId = config.targetWorkspaceId;
+
+    if (config.targetWorkspaceId === "new") {
+      const newWsId = `ws_${Date.now()}`;
+      destinationWsId = newWsId;
+      const wsName = config.newWorkspaceName || `Workspace ${workspaces.length + 1}`;
+
+      const newWs: WorkspaceData = {
+        id: newWsId,
+        name: wsName,
+        terminals: [newTerm],
+        gridLayout: settings.defaultLayout || "side-by-side",
+        focusedId: newTerm.id,
+        maximizedId: null,
+        createdAt: Date.now(),
+      };
+
+      setWorkspaces((prev) => [...prev, newWs]);
+      setActiveWorkspaceId(newWsId);
+      setActiveNav("workspace");
+    } else {
+      const targetWs = workspaces.find((w) => w.id === config.targetWorkspaceId) || workspaces[0];
+      if (targetWs) {
+        destinationWsId = targetWs.id;
+        handleUpdateWorkspaceById(targetWs.id, (prev) => ({
+          ...prev,
+          terminals: [...prev.terminals, newTerm],
+          focusedId: newTerm.id,
+        }));
+        setActiveWorkspaceId(targetWs.id);
+        setActiveNav("workspace");
+      }
+    }
+
+    handleLogSessionStart({
+      id: newTerm.id,
+      workspaceId: destinationWsId,
+      workspaceName:
+        config.targetWorkspaceId === "new"
+          ? config.newWorkspaceName || `Workspace ${workspaces.length + 1}`
+          : workspaces.find((w) => w.id === destinationWsId)?.name || "Workspace",
+      title: newTerm.title,
+      appType: newTerm.appType,
+      shellOrCommand: newTerm.shellOrCommand,
+      cwd: newTerm.cwd || "",
+      startedAt: newTerm.startedAt!,
+      status: "running",
+      outputChunksCount: 0,
+    });
+  };
+
   // Helper to compute workspace activity state
   const getWorkspaceActivityState = (ws: WorkspaceData): WorkspaceActivityState => {
     if (ws.terminals.length === 0) return "empty";
@@ -279,18 +510,26 @@ export default function App() {
     if (workspaces.length <= 1) return; // Keep at least one
 
     const targetWs = workspaces.find((w) => w.id === id);
-    // Only record into history if the workspace had at least one terminal
-    if (targetWs && targetWs.terminals.length > 0) {
-      const closedEntry: ClosedWorkspaceData = {
-        id: targetWs.id,
-        name: targetWs.name,
-        defaultCwd: targetWs.defaultCwd,
-        terminals: targetWs.terminals,
-        gridLayout: targetWs.gridLayout,
-        createdAt: targetWs.createdAt,
-        closedAt: Date.now(),
-      };
-      setClosedWorkspaces((prev) => [closedEntry, ...prev.filter((w) => w.id !== id)]);
+    if (targetWs) {
+      targetWs.terminals.forEach((t) => {
+        disposeTerminalInstance(t.id);
+        invoke("kill_terminal", { id: t.id }).catch(() => {});
+        handleLogSessionEnd(t.id);
+      });
+      
+      // Only record into history if the workspace had at least one terminal
+      if (targetWs.terminals.length > 0) {
+        const closedEntry: ClosedWorkspaceData = {
+          id: targetWs.id,
+          name: targetWs.name,
+          defaultCwd: targetWs.defaultCwd,
+          terminals: targetWs.terminals,
+          gridLayout: targetWs.gridLayout,
+          createdAt: targetWs.createdAt,
+          closedAt: Date.now(),
+        };
+        setClosedWorkspaces((prev) => [closedEntry, ...prev.filter((w) => w.id !== id)]);
+      }
     }
 
     setWorkspaces((prev) => {
@@ -497,6 +736,7 @@ export default function App() {
   };
 
   // Move a terminal from one workspace to another (or to a newly created workspace)
+  // Preserves the exact running terminal state, process, and output buffer seamlessly
   const handleMoveTerminal = (
     terminalId: string,
     sourceWsId: string,
@@ -564,7 +804,7 @@ export default function App() {
       );
     }
 
-    // Synchronize telemetry records
+    // Telemetry: Update workspace association for the persistent terminal session
     setSessionHistory((prev) =>
       prev.map((s) => {
         if (s.id === terminalId) {
@@ -708,6 +948,23 @@ export default function App() {
                 >
                   <BarChart3 size={16} />
                   <span>Analytics</span>
+                </button>
+              </nav>
+            </div>
+
+            {/* Section 2: Work Tools */}
+            <div className="sidebar-group">
+              <span className="nav-group-label">Work Tools</span>
+              <nav className="nav-group-items">
+                <button 
+                  className={`nav-item ${activeNav === "scratchpad" ? "active" : ""}`}
+                  onClick={() => setActiveNav("scratchpad")}
+                >
+                  <Edit3 size={16} />
+                  <span>Scratchpad</span>
+                  <span className="sidebar-pad-pill" title={`${scratchpads.length} scratchpad${scratchpads.length > 1 ? "s" : ""}`}>
+                    {scratchpads.length}
+                  </span>
                 </button>
               </nav>
             </div>
@@ -903,7 +1160,7 @@ export default function App() {
                   directoryTemplates={settings.directoryTemplates || []}
                   defaultCwd={settings.defaultCwd || ""}
                   onSaveDirectoryTemplate={handleSaveDirectoryTemplate}
-                  pinnedPresets={settings.pinnedQuickPresets || DEFAULT_APP_SETTINGS.pinnedQuickPresets}
+                  pinnedPresets={settings.pinnedQuickPresets ?? DEFAULT_APP_SETTINGS.pinnedQuickPresets}
                   onUpdatePinnedPresets={handleUpdatePinnedPresets}
                   availableWorkspaces={workspaces.map((w) => ({
                     id: w.id,
@@ -918,6 +1175,30 @@ export default function App() {
               </div>
             );
           })}
+
+          <div className={`page-view-layer ${activeNav === "scratchpad" ? "active" : ""}`}>
+            {activeNav === "scratchpad" && (
+              <ScratchpadPage
+                scratchpads={scratchpads}
+                activePadId={activePadId}
+                onSelectPad={setActivePadId}
+                onCreatePad={handleCreateScratchpad}
+                onUpdatePad={handleUpdateScratchpad}
+                onDeletePad={handleDeleteScratchpad}
+                onDuplicatePad={handleDuplicateScratchpad}
+                deletedScratchpads={deletedScratchpads}
+                onRestorePad={handleRestoreScratchpad}
+                onPermanentDeletePad={handlePermanentDeleteScratchpad}
+                onClearDeletedPads={handleClearDeletedScratchpads}
+                workspaces={workspaces}
+                activeWorkspaceId={activeWorkspaceId}
+                onSpawnAgent={handleSpawnAgentFromScratchpad}
+                directoryTemplates={settings.directoryTemplates || []}
+                defaultCwd={settings.defaultCwd || ""}
+                visibleAgents={settings.visibleAgents}
+              />
+            )}
+          </div>
 
           <div className={`page-view-layer ${activeNav === "analytics" ? "active" : ""}`}>
             {activeNav === "analytics" && (
