@@ -24,6 +24,7 @@ import {
   History,
   Compass,
   X,
+  GripVertical,
 } from "lucide-react";
 import { ScratchpadItem, DeletedScratchpadItem, INITIAL_SCRATCHPAD } from "../types/scratchpad";
 import { WorkspaceData } from "../types/workspace";
@@ -39,6 +40,7 @@ interface ScratchpadPageProps {
   onUpdatePad: (id: string, patch: Partial<ScratchpadItem>) => void;
   onDeletePad: (id: string) => void;
   onDuplicatePad: (id: string) => void;
+  onReorderPads?: (reordered: ScratchpadItem[]) => void;
   deletedScratchpads?: DeletedScratchpadItem[];
   onRestorePad?: (id: string) => void;
   onPermanentDeletePad?: (id: string) => void;
@@ -52,6 +54,7 @@ interface ScratchpadPageProps {
     newWorkspaceName?: string;
     autoSend: boolean;
     cwd?: string;
+    promptDelayMs?: number;
   }) => void;
   directoryTemplates?: DirectoryTemplate[];
   defaultCwd?: string;
@@ -76,6 +79,7 @@ export default function ScratchpadPage({
   onUpdatePad,
   onDeletePad,
   onDuplicatePad,
+  onReorderPads,
   deletedScratchpads = [],
   onRestorePad,
   onPermanentDeletePad,
@@ -115,11 +119,44 @@ export default function ScratchpadPage({
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving">("saved");
   const [toast, setToast] = useState<ToastState | null>(null);
 
+  // Flash highlight newly created scratchpad
+  const [flashingPadId, setFlashingPadId] = useState<string | null>(null);
+  const prevPadIdsRef = useRef<Set<string>>(new Set(scratchpads.map((p) => p.id)));
+
+  useEffect(() => {
+    const currentIds = new Set(scratchpads.map((p) => p.id));
+    const newlyAdded = scratchpads.find((p) => !prevPadIdsRef.current.has(p.id));
+    if (newlyAdded) {
+      setFlashingPadId(newlyAdded.id);
+      const timer = window.setTimeout(() => {
+        setFlashingPadId((curr) => (curr === newlyAdded.id ? null : curr));
+      }, 1400);
+      prevPadIdsRef.current = currentIds;
+      return () => window.clearTimeout(timer);
+    }
+    prevPadIdsRef.current = currentIds;
+  }, [scratchpads]);
+
   // Spawn agent modal parameters
   const [selectedAgent, setSelectedAgent] = useState<AppType>("antigravity");
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>(activeWorkspaceId || "ws_default");
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [customCwd, setCustomCwd] = useState<string>(defaultCwd || "");
+  const [authDelayMs, setAuthDelayMs] = useState<number>(0);
+
+  // Listen for Escape key to close modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isSpawnModalOpen) setIsSpawnModalOpen(false);
+        if (isDeletedHistoryOpen) setIsDeletedHistoryOpen(false);
+      }
+    };
+    if (isSpawnModalOpen || isDeletedHistoryOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isSpawnModalOpen, isDeletedHistoryOpen]);
 
   // Active scratchpad item
   const activePad = useMemo(() => {
@@ -321,22 +358,170 @@ export default function ScratchpadPage({
     return { chars, words, lines, estimatedTokens };
   }, [contentBuffer]);
 
-  // Filtered scratchpad list
+  // Filtered scratchpad list (preserves custom user drag-and-drop order)
   const filteredPads = useMemo(() => {
-    let list = [...scratchpads];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = list.filter(
+      return scratchpads.filter(
         (p) => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q)
       );
     }
-    // Sort: pinned first, then by updatedAt descending
-    return list.sort((a, b) => {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      return (b.updatedAt || 0) - (a.updatedAt || 0);
-    });
+    return scratchpads;
   }, [scratchpads, searchQuery]);
+
+  // Drag and drop state for reordering scratchpads (using pointer events for full Tauri WebView2 compatibility)
+  const [draggedPadIndex, setDraggedPadIndex] = useState<number | null>(null);
+  const [dragOverPadIndex, setDragOverPadIndex] = useState<number | null>(null);
+  const [dropPadPosition, setDropPadPosition] = useState<"above" | "below" | null>(null);
+  const draggedPadIndexRef = useRef<number | null>(null);
+  const dropPadTargetRef = useRef<{ targetIndex: number; position: "above" | "below" } | null>(null);
+  const padListRef = useRef<HTMLDivElement | null>(null);
+  const padPointerStartRef = useRef<{ x: number; y: number; index: number; started: boolean } | null>(null);
+  const isDraggingPadRef = useRef(false);
+
+  const getPadDropPosition = (
+    sourceIndex: number,
+    targetIndex: number,
+    clientY: number,
+    targetRect: DOMRect
+  ): "above" | "below" => {
+    const relY = (clientY - targetRect.top) / targetRect.height;
+    if (sourceIndex < targetIndex) {
+      if (targetIndex === sourceIndex + 1) return "below";
+      return relY < 0.4 ? "above" : "below";
+    } else {
+      if (targetIndex === sourceIndex - 1) return "above";
+      return relY > 0.6 ? "below" : "above";
+    }
+  };
+
+  const applyPadReorder = (actualSourceIndex: number, actualTargetIndex: number, position: "above" | "below") => {
+    const newPads = [...scratchpads];
+    const [removed] = newPads.splice(actualSourceIndex, 1);
+
+    let insertIndex = actualTargetIndex;
+    if (actualSourceIndex < actualTargetIndex) {
+      insertIndex = position === "above" ? actualTargetIndex - 1 : actualTargetIndex;
+    } else {
+      insertIndex = position === "above" ? actualTargetIndex : actualTargetIndex + 1;
+    }
+
+    insertIndex = Math.max(0, Math.min(newPads.length, insertIndex));
+    newPads.splice(insertIndex, 0, removed);
+
+    onReorderPads?.(newPads);
+  };
+
+  const handlePadPointerDown = (e: React.PointerEvent, index: number) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || e.button !== 0) return;
+
+    padPointerStartRef.current = { x: e.clientX, y: e.clientY, index, started: false };
+    draggedPadIndexRef.current = index;
+    isDraggingPadRef.current = false;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (!padPointerStartRef.current) return;
+      const start = padPointerStartRef.current;
+      const dist = Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y);
+
+      if (!start.started) {
+        if (dist < 4) return;
+        start.started = true;
+        isDraggingPadRef.current = true;
+        setDraggedPadIndex(start.index);
+        document.body.style.userSelect = "none";
+      }
+
+      if (!padListRef.current) return;
+      const items = Array.from(padListRef.current.querySelectorAll<HTMLElement>(".scratchpad-list-item"));
+      if (items.length === 0) return;
+
+      const listRect = padListRef.current.getBoundingClientRect();
+      const clientY = moveEvent.clientY;
+
+      if (clientY < listRect.top + 25) {
+        setDragOverPadIndex(0);
+        setDropPadPosition("above");
+        dropPadTargetRef.current = { targetIndex: 0, position: "above" };
+        return;
+      }
+
+      if (clientY > listRect.bottom - 25) {
+        const lastIdx = items.length - 1;
+        setDragOverPadIndex(lastIdx);
+        setDropPadPosition("below");
+        dropPadTargetRef.current = { targetIndex: lastIdx, position: "below" };
+        return;
+      }
+
+      let found = false;
+      for (let i = 0; i < items.length; i++) {
+        const itemRect = items[i].getBoundingClientRect();
+        if (clientY >= itemRect.top && clientY <= itemRect.bottom) {
+          found = true;
+          if (i === start.index) {
+            setDragOverPadIndex(null);
+            setDropPadPosition(null);
+            dropPadTargetRef.current = null;
+          } else {
+            const pos = getPadDropPosition(start.index, i, clientY, itemRect);
+            setDragOverPadIndex(i);
+            setDropPadPosition(pos);
+            dropPadTargetRef.current = { targetIndex: i, position: pos };
+          }
+          break;
+        }
+      }
+
+      if (!found) {
+        if (moveEvent.clientX < listRect.left - 50 || moveEvent.clientX > listRect.right + 50) {
+          setDragOverPadIndex(null);
+          setDropPadPosition(null);
+          dropPadTargetRef.current = null;
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+
+      document.body.style.userSelect = "";
+
+      if (padPointerStartRef.current?.started) {
+        const sourceIndex = padPointerStartRef.current.index;
+        const target = dropPadTargetRef.current;
+        if (target && (sourceIndex !== target.targetIndex || (target.position === "above" && sourceIndex !== 0) || (target.position === "below" && sourceIndex !== scratchpads.length - 1))) {
+          const sourcePad = filteredPads[sourceIndex];
+          const targetPad = filteredPads[target.targetIndex];
+          if (sourcePad && targetPad) {
+            const actualSourceIndex = scratchpads.findIndex((p) => p.id === sourcePad.id);
+            const actualTargetIndex = scratchpads.findIndex((p) => p.id === targetPad.id);
+            if (actualSourceIndex !== -1 && actualTargetIndex !== -1) {
+              applyPadReorder(actualSourceIndex, actualTargetIndex, target.position);
+            }
+          }
+        }
+      }
+
+      padPointerStartRef.current = null;
+      draggedPadIndexRef.current = null;
+      dropPadTargetRef.current = null;
+      setDraggedPadIndex(null);
+      setDragOverPadIndex(null);
+      setDropPadPosition(null);
+      
+      setTimeout(() => {
+        isDraggingPadRef.current = false;
+      }, 50);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
 
   // Available agent presets (respecting visibility if configured)
   const availableAgentPresets = useMemo(() => {
@@ -353,10 +538,26 @@ export default function ScratchpadPage({
     setIsSpawnModalOpen(true);
   };
 
-  const handleExecuteSpawn = () => {
+  const handleExecuteSpawn = async () => {
     if (!contentBuffer.trim()) {
       showToast("Prompt is empty");
       return;
+    }
+
+    // Ensure prompt is copied to clipboard before navigating to workspace
+    try {
+      await navigator.clipboard.writeText(contentBuffer);
+    } catch {
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = contentBuffer;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      } catch {
+        // ignore
+      }
     }
 
     onSpawnAgent({
@@ -364,8 +565,9 @@ export default function ScratchpadPage({
       prompt: contentBuffer,
       targetWorkspaceId: selectedWorkspace,
       newWorkspaceName: selectedWorkspace === "new" ? newWorkspaceName : undefined,
-      autoSend: true,
+      autoSend: authDelayMs !== -1,
       cwd: customCwd.trim() || undefined,
+      promptDelayMs: authDelayMs,
     });
 
     setIsSpawnModalOpen(false);
@@ -616,26 +818,40 @@ export default function ScratchpadPage({
         </div>
 
         {/* Scratchpads List */}
-        <div className="scratchpad-items-list">
+        <div ref={padListRef} className="scratchpad-items-list">
           {filteredPads.length === 0 ? (
             <div className="scratchpad-empty-filter">
               <FileText size={24} className="text-slate-600 mb-2" />
               <span>No scratchpads found</span>
             </div>
           ) : (
-            filteredPads.map((pad) => {
+            filteredPads.map((pad, index) => {
               const isActive = pad.id === activePad.id;
               const wordCount = pad.content.trim() ? pad.content.trim().split(/\s+/).length : 0;
               const tokenEstimate = Math.ceil(pad.content.length / 3.9);
+              const isDragging = draggedPadIndex === index;
+              const isDropTarget = dragOverPadIndex === index;
 
               return (
                 <div
                   key={pad.id}
-                  className={`scratchpad-list-item ${isActive ? "active" : ""}`}
-                  onClick={() => onSelectPad(pad.id)}
+                  onPointerDown={(e) => handlePadPointerDown(e, index)}
+                  className={`scratchpad-list-item ${isActive ? "active" : ""} ${
+                    pad.id === flashingPadId ? "flash-highlight" : ""
+                  } ${isDragging ? "is-dragging" : ""} ${
+                    isDropTarget ? (dropPadPosition === "above" ? "drop-target-above" : "drop-target-below") : ""
+                  }`}
+                  onClick={() => {
+                    if (isDraggingPadRef.current) return;
+                    onSelectPad(pad.id);
+                  }}
+                  title="Click and drag to reorder scratchpad"
                 >
                   <div className="pad-item-header">
                     <div className="pad-item-title-row">
+                      <div className="pad-drag-handle" title="Drag to reorder">
+                        <GripVertical size={12} />
+                      </div>
                       {pad.pinned && (
                         <Pin size={11} className="text-amber-400 fill-amber-400 mr-1 shrink-0" />
                       )}
@@ -644,7 +860,7 @@ export default function ScratchpadPage({
                       </span>
                     </div>
 
-                    <div className="pad-item-actions">
+                    <div className="pad-item-actions" draggable={false}>
                       <button
                         className={`pad-icon-btn ${pad.pinned ? "active-pin" : ""}`}
                         title={pad.pinned ? "Unpin scratchpad" : "Pin to top"}
@@ -853,8 +1069,10 @@ export default function ScratchpadPage({
             </span>
             <span className="stat-divider">•</span>
             <span className="stat-item token-badge" title="Estimated tokens (GPT/Claude/Gemini ~3.9 chars/token)">
-              <Sparkles size={11} className="mr-1 text-sage" />
-              <strong>~{stats.estimatedTokens}</strong> tokens
+              <Sparkles size={11} className="text-sage" />
+              <span>
+                <strong>~{stats.estimatedTokens}</strong> tokens
+              </span>
             </span>
           </div>
         </footer>
@@ -875,19 +1093,31 @@ export default function ScratchpadPage({
                 </div>
               </div>
 
-              {/* Live Prompt Info Pill */}
-              <div className="modal-header-stats-pill">
-                <span className="pill-title" title={activePad.title}>{activePad.title}</span>
-                <span className="pill-sep">•</span>
-                <span>{stats.words} words</span>
-                <span className="pill-sep">•</span>
-                <span className="text-sage">~{stats.estimatedTokens} tokens</span>
+              <div className="modal-header-actions-group">
+                {/* Live Prompt Info Pill */}
+                <div className="modal-header-stats-pill">
+                  <span className="pill-title" title={activePad.title}>{activePad.title}</span>
+                  <span className="pill-sep">•</span>
+                  <span>{stats.words} words</span>
+                  <span className="pill-sep">•</span>
+                  <span className="text-sage">~{stats.estimatedTokens} tokens</span>
+                </div>
+
+                <button
+                  type="button"
+                  className="modal-header-close-btn"
+                  onClick={() => setIsSpawnModalOpen(false)}
+                  title="Close dialog (Esc)"
+                  aria-label="Close dialog"
+                >
+                  <X size={16} />
+                </button>
               </div>
             </div>
 
             <div className="modal-body spacious-modal-body">
               <div className="modal-columns-layout">
-                {/* Column 1: Agent Selector */}
+                {/* Column 1: Agent & Target Workspace Selection */}
                 <div className="modal-column agent-column">
                   <div className="modal-column-header">
                     <label className="modal-label">1. Select AI Agent / Shell</label>
@@ -903,76 +1133,79 @@ export default function ScratchpadPage({
                           key={agent.id}
                           className={`agent-card-option ${isSelected ? "selected" : ""}`}
                           onClick={() => setSelectedAgent(agent.id)}
+                          title={agent.description}
                         >
                           <div className="agent-card-icon">{agent.icon(16)}</div>
                           <div className="agent-card-info">
                             <div className="agent-card-title">
                               <span>{agent.shortTitle}</span>
                             </div>
-                            <div className="agent-card-desc">{agent.description}</div>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
 
-                {/* Column 2: Workspace Association & Working Directory */}
-                <div className="modal-column workspace-column">
-                  <div className="modal-column-header">
-                    <label className="modal-label">2. Target Workspace</label>
-                  </div>
+                  {/* Section 2: Target Workspace */}
+                  <div className="modal-section-group mt-2">
+                    <div className="modal-column-header">
+                      <label className="modal-label">2. Target Workspace</label>
+                    </div>
 
-                  <div className="workspace-target-selector">
-                    {workspaces.map((ws) => (
+                    <div className="workspace-target-selector">
+                      {workspaces.map((ws) => (
+                        <label
+                          key={ws.id}
+                          className={`ws-target-option ${selectedWorkspace === ws.id ? "selected" : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            name="target_ws"
+                            value={ws.id}
+                            checked={selectedWorkspace === ws.id}
+                            onChange={() => setSelectedWorkspace(ws.id)}
+                          />
+                          <Folder size={13} className="text-slate-400 shrink-0" />
+                          <span className="ws-target-name">{ws.name}</span>
+                          <span className="ws-term-pill">{ws.terminals.length} term</span>
+                        </label>
+                      ))}
+
                       <label
-                        key={ws.id}
-                        className={`ws-target-option ${selectedWorkspace === ws.id ? "selected" : ""}`}
+                        className={`ws-target-option new-ws-option ${selectedWorkspace === "new" ? "selected" : ""}`}
                       >
                         <input
                           type="radio"
                           name="target_ws"
-                          value={ws.id}
-                          checked={selectedWorkspace === ws.id}
-                          onChange={() => setSelectedWorkspace(ws.id)}
+                          value="new"
+                          checked={selectedWorkspace === "new"}
+                          onChange={() => setSelectedWorkspace("new")}
                         />
-                        <Folder size={14} className="text-slate-400" />
-                        <span className="ws-target-name">{ws.name}</span>
-                        <span className="ws-term-pill">{ws.terminals.length} terminal{ws.terminals.length !== 1 ? "s" : ""}</span>
+                        <FolderPlus size={13} className="text-sage shrink-0" />
+                        <span className="ws-target-name font-medium text-sage">
+                          + Create New Workspace
+                        </span>
                       </label>
-                    ))}
-
-                    <label
-                      className={`ws-target-option new-ws-option ${selectedWorkspace === "new" ? "selected" : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name="target_ws"
-                        value="new"
-                        checked={selectedWorkspace === "new"}
-                        onChange={() => setSelectedWorkspace("new")}
-                      />
-                      <FolderPlus size={14} className="text-sage" />
-                      <span className="ws-target-name font-medium text-sage">
-                        + Create New Workspace
-                      </span>
-                    </label>
-                  </div>
-
-                  {selectedWorkspace === "new" && (
-                    <div className="new-ws-name-field">
-                      <label className="modal-sublabel">New Workspace Name</label>
-                      <input
-                        type="text"
-                        className="modal-text-input"
-                        value={newWorkspaceName}
-                        onChange={(e) => setNewWorkspaceName(e.target.value)}
-                        placeholder="e.g. Prompt Plan Workspace"
-                        autoFocus
-                      />
                     </div>
-                  )}
 
+                    {selectedWorkspace === "new" && (
+                      <div className="new-ws-name-field mt-1.5">
+                        <label className="modal-sublabel">New Workspace Name</label>
+                        <input
+                          type="text"
+                          className="modal-text-input"
+                          value={newWorkspaceName}
+                          onChange={(e) => setNewWorkspaceName(e.target.value)}
+                          placeholder="e.g. Prompt Plan Workspace"
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Column 2: Working Directory & Launch Readiness Timing */}
+                <div className="modal-column settings-column">
                   {/* Section 3: Working Directory Selector */}
                   <div className="cwd-selector-section">
                     <div className="modal-column-header">
@@ -1028,6 +1261,66 @@ export default function ScratchpadPage({
                       </div>
                     )}
                   </div>
+
+                  {/* Section 4: Sign-in & Token Refresh Timing */}
+                  <div className="auth-delay-selector-section mt-1">
+                    <div className="modal-column-header">
+                      <label className="modal-label">4. Sign-in & Readiness Timing</label>
+                    </div>
+                    <div className="modal-timing-grid">
+                      <button
+                        type="button"
+                        className={`modal-timing-card ${authDelayMs === 0 ? "active" : ""}`}
+                        onClick={() => setAuthDelayMs(0)}
+                        title="Auto-Adaptive: Intelligently detects account validation & prompt readiness before sending."
+                      >
+                        <div className="timing-title-row">
+                          <span className="timing-title">⚡ Auto-Adaptive</span>
+                          {authDelayMs === 0 && <Check size={11} className="text-sage" />}
+                        </div>
+                        <span className="timing-desc">Waits for validation & prompt cursor</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`modal-timing-card ${authDelayMs === 3000 ? "active" : ""}`}
+                        onClick={() => setAuthDelayMs(3000)}
+                        title="Standard Agent delay (3.0s) for token validation"
+                      >
+                        <div className="timing-title-row">
+                          <span className="timing-title">⏳ Standard (3.0s)</span>
+                          {authDelayMs === 3000 && <Check size={11} className="text-sage" />}
+                        </div>
+                        <span className="timing-desc">Agent token & config check</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`modal-timing-card ${authDelayMs === 6000 ? "active" : ""}`}
+                        onClick={() => setAuthDelayMs(6000)}
+                        title="Extended Auth delay (6.0s) for OAuth or SSO browser logins"
+                      >
+                        <div className="timing-title-row">
+                          <span className="timing-title">🔐 Extended (6.0s)</span>
+                          {authDelayMs === 6000 && <Check size={11} className="text-sage" />}
+                        </div>
+                        <span className="timing-desc">OAuth / SSO browser sign-in</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`modal-timing-card ${authDelayMs === -1 ? "active" : ""}`}
+                        onClick={() => setAuthDelayMs(-1)}
+                        title="Manual: Automatically copies prompt to clipboard upon spawn. Paste with Ctrl+V once signed in."
+                      >
+                        <div className="timing-title-row">
+                          <span className="timing-title">🖐️ Manual (Ctrl+V)</span>
+                          {authDelayMs === -1 && <Check size={11} className="text-sage" />}
+                        </div>
+                        <span className="timing-desc">Copies to clipboard; paste when ready</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1061,7 +1354,7 @@ export default function ScratchpadPage({
                 <div className="modal-icon-badge">
                   <History size={18} className="text-sage" />
                 </div>
-                <div>
+                <div className="modal-title-text-group">
                   <h3>Recently Deleted Scratchpads</h3>
                   <p>Restore accidentally deleted scratchpad drafts and plans.</p>
                 </div>

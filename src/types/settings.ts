@@ -48,7 +48,6 @@ export const DEFAULT_VISIBLE_AGENTS: Record<string, boolean> = {
   codex: true,
   grok: true,
   opencode: true,
-  gemini: true,
   copilot: true,
   kilo: true,
   ollama: true,

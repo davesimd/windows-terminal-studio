@@ -91,7 +91,6 @@ pub fn detect_installed_tools() -> HashMap<String, bool> {
     results.insert("claude".to_string(), is_executable_available("claude"));
     results.insert("codex".to_string(), is_executable_available("codex"));
     results.insert("grok".to_string(), is_executable_available("grok"));
-    results.insert("gemini".to_string(), is_executable_available("gemini"));
     results.insert("opencode".to_string(), is_executable_available("opencode"));
     results.insert("copilot".to_string(), is_executable_available("gh") || is_executable_available("copilot"));
     results.insert("kilo".to_string(), is_executable_available("kilo"));

@@ -158,3 +158,21 @@ Instead of passing `-NoExit -Command <agent>` directly to `powershell.exe` (whic
 1. Boot the shell in clean interactive mode (`powershell.exe -NoLogo`).
 2. Stream the startup command (e.g. `agy\r`, `claude\r`, `codex\r`) directly into the active PTY input stream once the connection is established.
 3. If an agent process finishes or is stopped with `Ctrl+C`, the session remains cleanly at the shell prompt without crashing the pane.
+
+---
+
+## 8. Terminal Transfer Buffer Reflow & Left-Alignment Prevention
+
+### Symptoms
+When moving/switching a terminal from one workspace to another where one or more terminals already existed, the terminal display failed to restore properly and text/information appeared crushed and aligned to the far left margin.
+
+### Root Causes
+1. **Asymmetrical Initial Flex Distribution**: In [`WorkspacePage.tsx`](file:///c:/Users/daves/.gemini/antigravity-ide/scratch/windows_application/src/pages/WorkspacePage.tsx), `paneSizes` was stored in local state initialized to `[100]` for a 1-terminal workspace. When a 2nd terminal was added, the initial render assigned `flex: 100` to the first pane and `flex: 1` to the newly transferred pane (before `useEffect` could update `paneSizes` to `[50, 50]`). This crushed the new terminal to minimal width.
+2. **CSS Flex Transition Thrashing**: `transition: flex 0.22s` on `.terminal-pane-wrapper` caused `ResizeObserver` to fire at every intermediate pixel width (e.g. 50px–100px).
+3. **ConPTY Hard Line Wrapping on Narrow Widths**: Windows ConPTY reflows its entire screen buffer whenever `resize_terminal` is called. Sending intermediate or small column counts (<20 cols) caused ConPTY to permanently wrap all buffer lines into narrow left-aligned chunks.
+
+### Solutions Implemented
+1. **Synchronous Balanced Flex Calculation**: In [`WorkspacePage.tsx`](file:///c:/Users/daves/.gemini/antigravity-ide/scratch/windows_application/src/pages/WorkspacePage.tsx), `paneFlex` calculation evaluates `isCustom = paneSizes.length === termCount && termCount > 0`. If `paneSizes.length` does not match the active terminal count, it immediately assigns an equal `100 / termCount` flex share to all panes without waiting for state updates.
+2. **Removed CSS Flex Transitions**: Removed `transition: flex` in [`App.css`](file:///c:/Users/daves/.gemini/antigravity-ide/scratch/windows_application/src/App.css) so pane dimensions snap immediately to balanced shares without thrashing resize observers.
+3. **Debounced ConPTY Resizing & Dimension Guard**: In [`XTermInstance.tsx`](file:///c:/Users/daves/.gemini/antigravity-ide/scratch/windows_application/src/components/terminal/XTermInstance.tsx), added `cols >= 20` / `rows >= 4` guards, dimension change deduplication, and an 80ms debounce on `invoke("resize_terminal")`, along with multi-stage fitting (`requestAnimationFrame` + 60ms/180ms timeouts) on remount to ensure full restoration.
+

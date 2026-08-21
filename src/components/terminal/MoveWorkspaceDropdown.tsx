@@ -15,6 +15,7 @@ interface MoveWorkspaceDropdownProps {
   availableWorkspaces: WorkspaceSummary[];
   isOpen: boolean;
   onClose: () => void;
+  anchorRef?: React.RefObject<HTMLElement | null>;
   onMoveToWorkspace: (targetWsId: string | "new", switchNow: boolean) => void;
 }
 
@@ -24,6 +25,7 @@ export default function MoveWorkspaceDropdown({
   availableWorkspaces,
   isOpen,
   onClose,
+  anchorRef,
   onMoveToWorkspace,
 }: MoveWorkspaceDropdownProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -31,7 +33,11 @@ export default function MoveWorkspaceDropdown({
   // Close when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (anchorRef?.current && anchorRef.current.contains(target)) {
+        return;
+      }
+      if (menuRef.current && !menuRef.current.contains(target)) {
         onClose();
       }
     };
@@ -42,7 +48,7 @@ export default function MoveWorkspaceDropdown({
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, anchorRef]);
 
   // Close on Escape key
   useEffect(() => {

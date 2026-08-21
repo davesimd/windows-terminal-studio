@@ -84,8 +84,6 @@ export default function HomeRecentHistory({
         return <Sparkles size={14} className="text-sage-light" />;
       case "opencode":
         return <Boxes size={14} className="text-cyan-400" />;
-      case "gemini":
-        return <Sparkles size={14} className="text-blue-400" />;
       case "copilot":
         return <Bot size={14} className="text-sky-400" />;
       case "kilo":

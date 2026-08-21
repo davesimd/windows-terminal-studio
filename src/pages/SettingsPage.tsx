@@ -1004,70 +1004,107 @@ export default function SettingsPage({
             </div>
           )}
 
-          {/* Category 4: Backup & Storage Management */}
+          {/* Category: Backup & Storage Management */}
           {activeCategory === "backup" && (
-            <div className="settings-card">
-              <div className="card-header">
-                <div className="card-header-left">
-                  <HardDrive size={16} className="text-sage" />
-                  <h3>Backup & Storage Management</h3>
+            <div className="settings-scroll-body">
+              {/* Section 1: Backup & Configuration Snapshots */}
+              <div className="settings-card">
+                <div className="card-header">
+                  <div className="card-header-left">
+                    <HardDrive size={16} className="text-sage" />
+                    <h3>Backup & Restore Configuration</h3>
+                  </div>
+                  <span className="card-tag">{storageUsageKB} KB Cached</span>
                 </div>
-                <span className="card-tag">{storageUsageKB} KB Cached</span>
+
+                <p className="card-description">
+                  Export a full JSON snapshot of your workspaces, names, layouts, and tool configurations, or restore from a backup file.
+                </p>
+
+                <div className="backup-action-buttons">
+                  <button className="btn-settings-action" onClick={handleBackup}>
+                    <Download size={14} />
+                    <span>Backup Configuration (JSON)</span>
+                  </button>
+
+                  <button
+                    className="btn-settings-action"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload size={14} />
+                    <span>Import Configuration</span>
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: "none" }}
+                    accept=".json"
+                    onChange={handleImportFile}
+                  />
+                </div>
               </div>
 
-              <p className="card-description">
-                Export a full JSON snapshot of your workspaces, names, layouts, and tool configurations, or restore from a backup file.
-              </p>
+              {/* Section 2: Active Process Termination */}
+              <div className="settings-card">
+                <div className="card-header">
+                  <div className="card-header-left">
+                    <TermIcon size={16} className="text-rose-400" />
+                    <h3>Active Process Termination</h3>
+                  </div>
+                  <span className="card-tag">Process Control</span>
+                </div>
 
-              <div className="backup-action-buttons">
-                <button className="btn-settings-action" onClick={handleBackup}>
-                  <Download size={14} />
-                  <span>Backup Configuration (JSON)</span>
-                </button>
+                <p className="card-description">
+                  Forcefully terminate all background ConPTY child processes and active terminal sessions across all workspaces without modifying your saved layouts or configuration.
+                </p>
 
-                <button
-                  className="btn-settings-action"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload size={14} />
-                  <span>Import Configuration</span>
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  style={{ display: "none" }}
-                  accept=".json"
-                  onChange={handleImportFile}
-                />
+                <div className="backup-action-buttons">
+                  <button
+                    className="btn-settings-action danger"
+                    onClick={async () => {
+                      try {
+                        await invoke("kill_all_terminals");
+                        showFeedback("Terminated all active terminal processes");
+                      } catch {
+                        showFeedback("No running sessions to terminate");
+                      }
+                    }}
+                    title="Forcefully terminate all active background terminal sessions"
+                  >
+                    <Trash2 size={14} />
+                    <span>Kill All Processes</span>
+                  </button>
+                </div>
+              </div>
 
-                <button
-                  className="btn-settings-action danger"
-                  onClick={async () => {
-                    try {
-                      await invoke("kill_all_terminals");
-                      showFeedback("Terminated all active terminal processes");
-                    } catch {
-                      showFeedback("No running sessions to terminate");
-                    }
-                  }}
-                  title="Forcefully terminate all active background terminal sessions"
-                >
-                  <Trash2 size={14} />
-                  <span>Kill All Processes</span>
-                </button>
+              {/* Section 3: Factory Reset */}
+              <div className="settings-card">
+                <div className="card-header">
+                  <div className="card-header-left">
+                    <RotateCcw size={16} className="text-amber-400" />
+                    <h3>Reset Application Data</h3>
+                  </div>
+                  <span className="card-tag">Danger Zone</span>
+                </div>
 
-                <button
-                  className="btn-settings-action danger"
-                  onClick={() => {
-                    if (confirm("Are you sure you want to reset all workspaces and settings to defaults?")) {
-                      onResetToDefaults();
-                      showFeedback("Reset to default settings");
-                    }
-                  }}
-                >
-                  <RotateCcw size={14} />
-                  <span>Reset to Defaults</span>
-                </button>
+                <p className="card-description">
+                  Restore all workspaces, terminal configurations, directory templates, and application preferences back to their factory defaults.
+                </p>
+
+                <div className="backup-action-buttons">
+                  <button
+                    className="btn-settings-action danger"
+                    onClick={() => {
+                      if (confirm("Are you sure you want to reset all workspaces and settings to defaults?")) {
+                        onResetToDefaults();
+                        showFeedback("Reset to default settings");
+                      }
+                    }}
+                  >
+                    <RotateCcw size={14} />
+                    <span>Reset to Defaults</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

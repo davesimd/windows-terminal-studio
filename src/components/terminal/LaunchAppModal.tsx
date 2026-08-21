@@ -117,16 +117,6 @@ const PRESETS: Preset[] = [
     icon: <Boxes size={18} className="text-cyan-400" />,
   },
   {
-    id: "gemini",
-    title: "Gemini CLI",
-    category: "ai",
-    appType: "gemini",
-    shellOrCommand: "powershell.exe",
-    args: ["-NoExit", "-Command", "gemini"],
-    description: "Google Gemini Code Assist shell terminal interface",
-    icon: <Sparkles size={18} className="text-blue-400" />,
-  },
-  {
     id: "copilot",
     title: "GitHub Copilot CLI",
     category: "ai",

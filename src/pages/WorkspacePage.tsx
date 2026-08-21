@@ -43,6 +43,7 @@ interface WorkspacePageProps {
   visibleAgents?: Record<string, boolean>;
   detectedAgents?: Record<string, boolean>;
   onOpenSettings?: () => void;
+  onSendToScratchpad?: (title: string, content: string, targetAgent?: AppType, targetWsId?: string, switchNow?: boolean) => void;
 }
 
 export default function WorkspacePage({
@@ -60,6 +61,7 @@ export default function WorkspacePage({
   visibleAgents,
   detectedAgents,
   onOpenSettings,
+  onSendToScratchpad,
 }: WorkspacePageProps) {
 
   const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
@@ -198,15 +200,7 @@ export default function WorkspacePage({
           cwd: targetCwd,
         });
         break;
-      case "gemini":
-        spawnTerminal({
-          title: "Gemini CLI",
-          appType: "gemini",
-          shellOrCommand: "powershell.exe",
-          args: ["-NoExit", "-Command", "gemini"],
-          cwd: targetCwd,
-        });
-        break;
+
       case "copilot":
         spawnTerminal({
           title: "GitHub Copilot CLI",
@@ -435,8 +429,7 @@ export default function WorkspacePage({
         return <Sparkles size={13} className="text-sage-light" />;
       case "opencode":
         return <Boxes size={13} className="text-cyan-400" />;
-      case "gemini":
-        return <Sparkles size={13} className="text-blue-400" />;
+
       case "copilot":
         return <Bot size={13} className="text-sky-400" />;
       case "kilo":
@@ -675,8 +668,9 @@ export default function WorkspacePage({
                 >
                   {workspace.terminals.map((term, index) => {
                     const isFocusHidden = (currentLayout === "focus" || currentLayout === "maximized") && term.id !== activeFocusId;
+                    const isCustom = paneSizes.length === termCount && termCount > 0;
                     const paneFlex = (currentLayout === "side-by-side" || currentLayout === "stacked")
-                      ? (paneSizes[index] ?? 1)
+                      ? (isCustom ? paneSizes[index] : (termCount > 0 ? 100 / termCount : 1))
                       : undefined;
                     const isGridSpanned = currentLayout === "grid" && termCount === 3 && index === 2;
 
@@ -684,6 +678,8 @@ export default function WorkspacePage({
                       ...(paneFlex !== undefined ? { flex: paneFlex } : {}),
                       ...(isGridSpanned ? { gridColumn: "span 2" } : {}),
                     };
+
+                    const isFocused = term.id === activeFocusId;
 
                     return (
                       <div
@@ -694,6 +690,8 @@ export default function WorkspacePage({
                         <div className="pane-inner">
                           <TerminalSession
                             session={term}
+                            isFocused={isFocused}
+                            onFocus={(id) => onUpdateWorkspace({ focusedId: id })}
                             isMaximized={Boolean(workspace.maximizedId)}
                             onMaximizeToggle={(id) => onUpdateWorkspace({
                               maximizedId: workspace.maximizedId === id ? null : id
@@ -704,6 +702,7 @@ export default function WorkspacePage({
                             availableWorkspaces={availableWorkspaces}
                             currentWorkspaceId={workspace.id}
                             onMoveToWorkspace={onMoveTerminal ? (termId: string, targetWsId: string | "new", switchNow: boolean) => onMoveTerminal(termId, workspace.id, targetWsId, switchNow) : undefined}
+                            onSendToScratchpad={onSendToScratchpad}
                           />
                         </div>
 

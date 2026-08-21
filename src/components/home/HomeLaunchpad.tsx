@@ -88,17 +88,6 @@ const AGENT_OPTIONS: AgentOption[] = [
     icon: <Rocket size={14} className="text-rose-400" />,
   },
   {
-    id: "gemini",
-    name: "Gemini CLI",
-    category: "ai",
-    badge: "Google",
-    appType: "gemini",
-    shellOrCommand: "powershell.exe",
-    getArgs: (prompt) => prompt ? ["-NoExit", "-Command", `gemini "${prompt.replace(/"/g, '`"')}"`] : ["-NoExit", "-Command", "gemini"],
-    description: "Google Gemini Code Assist shell terminal interface",
-    icon: <Sparkles size={14} className="text-blue-400" />,
-  },
-  {
     id: "opencode",
     name: "OpenCode",
     category: "ai",

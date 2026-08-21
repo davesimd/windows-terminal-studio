@@ -10,7 +10,9 @@ import {
   Edit3,
   Trash2, 
   Check, 
-  Folder
+  Folder,
+  Search,
+  GripVertical
 } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import WorkspacePage from "./pages/WorkspacePage";
@@ -18,6 +20,8 @@ import ScratchpadPage from "./pages/ScratchpadPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import SettingsPage from "./pages/SettingsPage";
 import LaunchAppModal from "./components/terminal/LaunchAppModal";
+import BroadcastModal from "./components/terminal/BroadcastModal";
+import CommandPaletteModal from "./components/ui/CommandPaletteModal";
 import { TerminalData } from "./components/terminal/TerminalSession";
 import { disposeTerminalInstance } from "./components/terminal/XTermInstance";
 import { WorkspaceData, ClosedWorkspaceData, WorkspaceActivityState } from "./types/workspace";
@@ -172,6 +176,41 @@ export default function App() {
   // Home modal trigger state for custom process
   const [homeLaunchModalWsId, setHomeLaunchModalWsId] = useState<string | null>(null);
 
+  // Command Palette & Global Broadcast modal state
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isGlobalBroadcastOpen, setIsGlobalBroadcastOpen] = useState(false);
+
+  // Global keyboard & custom event listener for Studio Command Palette (Ctrl+K, Cmd+K, Ctrl+Shift+P) and suppressing default browser find
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if ((isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key === "k" || e.key === "K")) ||
+          (isCtrlOrCmd && e.shiftKey && (e.key === "p" || e.key === "P"))) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+      // Suppress default WebView2 / Chromium browser find bar so it doesn't steal focus
+      if (isCtrlOrCmd && !e.shiftKey && !e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+      }
+      if (e.key === "F3") {
+        e.preventDefault();
+      }
+    };
+    const handleCustomOpen = () => {
+      setIsCommandPaletteOpen(true);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("open-command-palette", handleCustomOpen);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("open-command-palette", handleCustomOpen);
+    };
+  }, []);
+
 
   // Load initial session history
   const [sessionHistory, setSessionHistory] = useState<HistoricalSession[]>(() => {
@@ -228,6 +267,152 @@ export default function App() {
   // Inline renaming state for sidebar
   const [editingWsId, setEditingWsId] = useState<string | null>(null);
   const [editNameInput, setEditNameInput] = useState<string>("");
+
+  // Drag and drop state for reordering workspaces in sidebar (using pointer events for full Tauri WebView2 compatibility)
+  const [draggedWsIndex, setDraggedWsIndex] = useState<number | null>(null);
+  const [dragOverWsIndex, setDragOverWsIndex] = useState<number | null>(null);
+  const [dropWsPosition, setDropWsPosition] = useState<"above" | "below" | null>(null);
+  const draggedWsIndexRef = useRef<number | null>(null);
+  const dropWsTargetRef = useRef<{ targetIndex: number; position: "above" | "below" } | null>(null);
+  const wsListRef = useRef<HTMLDivElement | null>(null);
+  const pointerStartWsRef = useRef<{ x: number; y: number; index: number; started: boolean } | null>(null);
+  const isDraggingWsRef = useRef(false);
+
+  const getWsDropPosition = (
+    sourceIndex: number,
+    targetIndex: number,
+    clientY: number,
+    targetRect: DOMRect
+  ): "above" | "below" => {
+    const relY = (clientY - targetRect.top) / targetRect.height;
+    if (sourceIndex < targetIndex) {
+      if (targetIndex === sourceIndex + 1) return "below";
+      return relY < 0.4 ? "above" : "below";
+    } else {
+      if (targetIndex === sourceIndex - 1) return "above";
+      return relY > 0.6 ? "below" : "above";
+    }
+  };
+
+  const applyWsReorder = (sourceIndex: number, targetIndex: number, position: "above" | "below") => {
+    const newWorkspaces = [...workspaces];
+    const [removed] = newWorkspaces.splice(sourceIndex, 1);
+
+    let insertIndex = targetIndex;
+    if (sourceIndex < targetIndex) {
+      insertIndex = position === "above" ? targetIndex - 1 : targetIndex;
+    } else {
+      insertIndex = position === "above" ? targetIndex : targetIndex + 1;
+    }
+
+    insertIndex = Math.max(0, Math.min(newWorkspaces.length, insertIndex));
+    newWorkspaces.splice(insertIndex, 0, removed);
+
+    setWorkspaces(newWorkspaces);
+  };
+
+  const handleWsPointerDown = (e: React.PointerEvent, index: number) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("input") || editingWsId || e.button !== 0) return;
+
+    pointerStartWsRef.current = { x: e.clientX, y: e.clientY, index, started: false };
+    draggedWsIndexRef.current = index;
+    isDraggingWsRef.current = false;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      if (!pointerStartWsRef.current) return;
+      const start = pointerStartWsRef.current;
+      const dist = Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y);
+
+      if (!start.started) {
+        if (dist < 4) return;
+        start.started = true;
+        isDraggingWsRef.current = true;
+        setDraggedWsIndex(start.index);
+        document.body.style.userSelect = "none";
+      }
+
+      if (!wsListRef.current) return;
+      const items = Array.from(wsListRef.current.querySelectorAll<HTMLElement>(".ws-sidebar-item"));
+      if (items.length === 0) return;
+
+      const listRect = wsListRef.current.getBoundingClientRect();
+      const clientY = moveEvent.clientY;
+
+      if (clientY < listRect.top + 20) {
+        setDragOverWsIndex(0);
+        setDropWsPosition("above");
+        dropWsTargetRef.current = { targetIndex: 0, position: "above" };
+        return;
+      }
+
+      if (clientY > listRect.bottom - 20) {
+        const lastIdx = items.length - 1;
+        setDragOverWsIndex(lastIdx);
+        setDropWsPosition("below");
+        dropWsTargetRef.current = { targetIndex: lastIdx, position: "below" };
+        return;
+      }
+
+      let found = false;
+      for (let i = 0; i < items.length; i++) {
+        const itemRect = items[i].getBoundingClientRect();
+        if (clientY >= itemRect.top && clientY <= itemRect.bottom) {
+          found = true;
+          if (i === start.index) {
+            setDragOverWsIndex(null);
+            setDropWsPosition(null);
+            dropWsTargetRef.current = null;
+          } else {
+            const pos = getWsDropPosition(start.index, i, clientY, itemRect);
+            setDragOverWsIndex(i);
+            setDropWsPosition(pos);
+            dropWsTargetRef.current = { targetIndex: i, position: pos };
+          }
+          break;
+        }
+      }
+
+      if (!found) {
+        if (moveEvent.clientX < listRect.left - 50 || moveEvent.clientX > listRect.right + 50) {
+          setDragOverWsIndex(null);
+          setDropWsPosition(null);
+          dropWsTargetRef.current = null;
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+
+      document.body.style.userSelect = "";
+
+      if (pointerStartWsRef.current?.started) {
+        const sourceIndex = pointerStartWsRef.current.index;
+        const target = dropWsTargetRef.current;
+        if (target && (sourceIndex !== target.targetIndex || (target.position === "above" && sourceIndex !== 0) || (target.position === "below" && sourceIndex !== workspaces.length - 1))) {
+          applyWsReorder(sourceIndex, target.targetIndex, target.position);
+        }
+      }
+
+      pointerStartWsRef.current = null;
+      draggedWsIndexRef.current = null;
+      dropWsTargetRef.current = null;
+      setDraggedWsIndex(null);
+      setDragOverWsIndex(null);
+      setDropWsPosition(null);
+      
+      setTimeout(() => {
+        isDraggingWsRef.current = false;
+      }, 50);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
 
   const isInitialMount = useRef(true);
 
@@ -369,6 +554,10 @@ export default function App() {
     setDeletedScratchpads([]);
   };
 
+  const handleReorderScratchpads = (reordered: ScratchpadItem[]) => {
+    setScratchpads(reordered);
+  };
+
   const handleDuplicateScratchpad = (id: string) => {
     const source = scratchpads.find((p) => p.id === id);
     if (!source) return;
@@ -384,6 +573,30 @@ export default function App() {
     setActivePadId(duplicated.id);
   };
 
+  const handleSendToScratchpad = (
+    title: string,
+    content: string,
+    targetAgent?: AppType,
+    targetWsId?: string,
+    switchNow: boolean = true
+  ) => {
+    const newPad: ScratchpadItem = {
+      id: `pad_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: title || `Terminal Log ${new Date().toLocaleTimeString()}`,
+      content,
+      targetAgent,
+      targetWorkspaceId: targetWsId,
+      tags: ["terminal-output", targetAgent || "shell"],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setScratchpads((prev) => [newPad, ...prev]);
+    setActivePadId(newPad.id);
+    if (switchNow) {
+      setActiveNav("scratchpad");
+    }
+  };
+
   // Launch agent from scratchpad with prompt and readiness check
   const handleSpawnAgentFromScratchpad = (config: {
     agentType: AppType;
@@ -392,6 +605,7 @@ export default function App() {
     newWorkspaceName?: string;
     autoSend: boolean;
     cwd?: string;
+    promptDelayMs?: number;
   }) => {
     // Copy prompt to clipboard so it's always immediately accessible
     try {
@@ -420,6 +634,7 @@ export default function App() {
       cwd: cwdToUse || undefined,
       initialPrompt: config.prompt,
       autoSendPrompt: config.autoSend !== false,
+      promptDelayMs: config.promptDelayMs,
       status: "running",
       startedAt: Date.now(),
       outputChunksCount: 0,
@@ -502,6 +717,128 @@ export default function App() {
     setWorkspaces((prev) => [...prev, newWs]);
     setActiveWorkspaceId(newWs.id);
     setActiveNav("workspace");
+  };
+
+  // Launch preset directly from Command Palette
+  const handleLaunchPresetFromPalette = (appType: AppType, targetWsId?: string) => {
+    const wsId = targetWsId || activeWorkspaceId;
+    const targetWs = workspaces.find((w) => w.id === wsId) || workspaces[0];
+    const targetCwd = targetWs?.defaultCwd || settings.defaultCwd || undefined;
+    
+    const preset = ALL_PRESET_DEFINITIONS.find((p) => p.id === appType);
+    const title = preset ? preset.shortTitle : appType;
+    let shellOrCommand = "powershell.exe";
+    let args: string[] | undefined;
+
+    switch (appType) {
+      case "powershell":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit"];
+        break;
+      case "cmd":
+        shellOrCommand = "cmd.exe";
+        args = ["/k"];
+        break;
+      case "wsl":
+        shellOrCommand = "wsl.exe";
+        break;
+      case "gitbash":
+        shellOrCommand = "bash.exe";
+        args = ["--login", "-i"];
+        break;
+      case "node":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "node"];
+        break;
+      case "python":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "python"];
+        break;
+      case "antigravity":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "agy"];
+        break;
+      case "claude":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "claude"];
+        break;
+      case "codex":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "codex"];
+        break;
+      case "grok":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "grok"];
+        break;
+      case "opencode":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "opencode"];
+        break;
+      case "copilot":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "gh copilot suggest"];
+        break;
+      case "kilo":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "kilo"];
+        break;
+      case "ollama":
+        shellOrCommand = "powershell.exe";
+        args = ["-NoExit", "-Command", "ollama run llama3"];
+        break;
+      default:
+        shellOrCommand = preset?.commandName || "powershell.exe";
+        args = ["-NoExit"];
+        break;
+    }
+
+    const newTermId = `term_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newTerm: TerminalData = {
+      id: newTermId,
+      title,
+      appType,
+      shellOrCommand,
+      args,
+      cwd: targetCwd,
+      status: "running",
+      startedAt: Date.now(),
+      outputChunksCount: 0,
+    };
+
+    handleUpdateWorkspaceById(wsId, (prev) => ({
+      ...prev,
+      terminals: [...prev.terminals, newTerm],
+      focusedId: newTerm.id,
+    }));
+
+    handleLogSessionStart({
+      id: newTerm.id,
+      workspaceId: wsId,
+      workspaceName: targetWs?.name || "Workspace",
+      title: newTerm.title,
+      appType: newTerm.appType,
+      shellOrCommand: newTerm.shellOrCommand,
+      cwd: newTerm.cwd || "",
+      startedAt: newTerm.startedAt!,
+      status: "running",
+      outputChunksCount: 0,
+    });
+
+    setActiveWorkspaceId(wsId);
+    setActiveNav("workspace");
+  };
+
+  // Broadcast command to active workspace
+  const handleBroadcastToActiveWorkspace = async (command: string) => {
+    const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
+    if (!activeWs) return;
+    try {
+      for (const t of activeWs.terminals) {
+        await invoke("write_terminal", { id: t.id, data: command + "\r" });
+      }
+    } catch (err) {
+      console.error("Global broadcast failed:", err);
+    }
   };
 
   // Delete a workspace and record in closedWorkspaces only if it had terminals
@@ -797,6 +1134,7 @@ export default function App() {
               ...w,
               terminals: [...w.terminals, terminalToMove],
               focusedId: terminalToMove.id,
+              maximizedId: null,
             };
           }
           return w;
@@ -915,6 +1253,16 @@ export default function App() {
         </div>
 
         <div className="header-status">
+          <button
+            type="button"
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="header-command-btn"
+            title="Open Command Palette (Ctrl+K or Ctrl+Shift+P)"
+          >
+            <Search size={13} className="text-sage" />
+            <span>Search or Run Command...</span>
+            <kbd className="header-command-kbd">Ctrl+K</kbd>
+          </button>
           <span
             className={`pulse-indicator ${
               totalActiveWorkspaces > 0 ? "active-streaming" : "idle"
@@ -982,22 +1330,34 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="workspaces-list">
-                {workspaces.map((ws) => {
+              <div ref={wsListRef} className="workspaces-list">
+                {workspaces.map((ws, index) => {
                   const isActive = activeNav === "workspace" && activeWorkspaceId === ws.id;
                   const isEditing = editingWsId === ws.id;
                   const activityState = getWorkspaceActivityState(ws);
+                  const isDragging = draggedWsIndex === index;
+                  const isDropTarget = dragOverWsIndex === index;
 
                   return (
                     <div
                       key={ws.id}
-                      className={`ws-sidebar-item ${isActive ? "active" : ""} ${activityState}`}
+                      onPointerDown={(e) => handleWsPointerDown(e, index)}
+                      className={`ws-sidebar-item ${isActive ? "active" : ""} ${activityState} ${
+                        isDragging ? "is-dragging" : ""
+                      } ${isDropTarget ? (dropWsPosition === "above" ? "drop-target-above" : "drop-target-below") : ""}`}
                       onClick={() => {
+                        if (isDraggingWsRef.current) return;
                         setActiveWorkspaceId(ws.id);
                         setActiveNav("workspace");
                       }}
+                      title="Click and drag to reorder workspace"
                     >
                       <div className="ws-item-left">
+                        {/* Drag grip icon */}
+                        <div className="ws-drag-handle" title="Drag to reorder">
+                          <GripVertical size={12} />
+                        </div>
+
                         {/* State Dot Wrapper (prevents glow clipping) */}
                         <div className="ws-status-dot-wrapper">
                           <span 
@@ -1021,6 +1381,7 @@ export default function App() {
                               if (e.key === "Escape") setEditingWsId(null);
                             }}
                             onClick={(e) => e.stopPropagation()}
+                            draggable={false}
                           />
                         ) : (
                           <span className="ws-name" title={ws.name}>
@@ -1030,7 +1391,7 @@ export default function App() {
                       </div>
 
                       {/* Right actions / badge */}
-                      <div className="ws-item-right">
+                      <div className="ws-item-right" draggable={false}>
                         {isEditing ? (
                           <button
                             className="ws-action-icon-btn"
@@ -1171,6 +1532,7 @@ export default function App() {
                   visibleAgents={settings.visibleAgents}
                   detectedAgents={settings.detectedAgents}
                   onOpenSettings={() => setActiveNav("settings")}
+                  onSendToScratchpad={handleSendToScratchpad}
                 />
               </div>
             );
@@ -1186,6 +1548,7 @@ export default function App() {
                 onUpdatePad={handleUpdateScratchpad}
                 onDeletePad={handleDeleteScratchpad}
                 onDuplicatePad={handleDuplicateScratchpad}
+                onReorderPads={handleReorderScratchpads}
                 deletedScratchpads={deletedScratchpads}
                 onRestorePad={handleRestoreScratchpad}
                 onPermanentDeletePad={handlePermanentDeleteScratchpad}
@@ -1251,6 +1614,41 @@ export default function App() {
           handleLaunchTerminalFromHome(config);
           setHomeLaunchModalWsId(null);
         }}
+      />
+
+      {/* Studio Command Palette (Ctrl+K / Ctrl+Shift+P) */}
+      <CommandPaletteModal
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelectWorkspace={(wsId) => setActiveWorkspaceId(wsId)}
+        onCreateWorkspace={handleAddWorkspace}
+        onLaunchPreset={handleLaunchPresetFromPalette}
+        onOpenCustomLaunchModal={() => setHomeLaunchModalWsId(activeWorkspaceId)}
+        onOpenBroadcastModal={() => setIsGlobalBroadcastOpen(true)}
+        onChangeLayout={(layout) => handleUpdateWorkspaceById(activeWorkspaceId, { gridLayout: layout, maximizedId: null })}
+        onResetPaneSizes={() => {
+          // Trigger default layout
+          handleUpdateWorkspaceById(activeWorkspaceId, (prev) => ({
+            ...prev,
+            gridLayout: prev.gridLayout || "side-by-side"
+          }));
+        }}
+        onNavigateTab={(tab) => setActiveNav(tab)}
+        onToggleTheme={() => handleUpdateSettings({ theme: (settings.theme || "sage") === "sage" ? "gold" : "sage" })}
+        currentTheme={settings.theme || "sage"}
+        directoryTemplates={settings.directoryTemplates || []}
+        visibleAgents={settings.visibleAgents}
+        onCreateScratchpad={handleCreateScratchpad}
+      />
+
+      {/* Global Broadcast Modal triggered from Command Palette */}
+      <BroadcastModal
+        isOpen={isGlobalBroadcastOpen}
+        terminalCount={workspaces.find((w) => w.id === activeWorkspaceId)?.terminals.length || 0}
+        onClose={() => setIsGlobalBroadcastOpen(false)}
+        onBroadcast={handleBroadcastToActiveWorkspace}
       />
     </div>
   );

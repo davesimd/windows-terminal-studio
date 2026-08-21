@@ -4,7 +4,6 @@ export type AppType =
   | "wsl" 
   | "gitbash"
   | "antigravity" 
-  | "gemini" 
   | "claude" 
   | "codex"
   | "grok"

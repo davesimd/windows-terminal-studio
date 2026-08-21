@@ -224,8 +224,7 @@ export default function AnalyticsPage({
         return <Sparkles size={14} className="text-sage-light" />;
       case "opencode":
         return <Boxes size={14} className="text-cyan-400" />;
-      case "gemini":
-        return <Sparkles size={14} className="text-blue-400" />;
+
       case "copilot":
         return <Bot size={14} className="text-sky-400" />;
       case "kilo":
@@ -454,7 +453,6 @@ export default function AnalyticsPage({
               <option value="claude">Claude Code</option>
               <option value="antigravity">Antigravity CLI</option>
               <option value="opencode">OpenCode CLI</option>
-              <option value="gemini">Gemini CLI</option>
               <option value="copilot">GitHub Copilot CLI</option>
               <option value="kilo">Kilo CLI</option>
               <option value="ollama">Ollama CLI</option>

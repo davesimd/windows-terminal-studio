@@ -115,15 +115,6 @@ export const ALL_PRESET_DEFINITIONS: QuickPresetDefinition[] = [
     icon: (size = 14) => <Rocket size={size} className="text-rose-400" />,
   },
   {
-    id: "gemini",
-    title: "Gemini CLI",
-    shortTitle: "Gemini",
-    description: "Google Gemini Code Assist shell terminal interface",
-    category: "ai",
-    commandName: "gemini",
-    icon: (size = 14) => <Sparkles size={size} className="text-blue-400" />,
-  },
-  {
     id: "opencode",
     title: "OpenCode CLI",
     shortTitle: "OpenCode",

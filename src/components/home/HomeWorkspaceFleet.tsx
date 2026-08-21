@@ -67,8 +67,6 @@ export default function HomeWorkspaceFleet({
         return <BrainCircuit size={12} className="text-emerald-400" />;
       case "grok":
         return <Rocket size={12} className="text-rose-400" />;
-      case "gemini":
-        return <Sparkles size={12} className="text-blue-400" />;
       case "opencode":
         return <Boxes size={12} className="text-cyan-400" />;
       case "kilo":
